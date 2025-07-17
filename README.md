@@ -156,6 +156,7 @@ Note: I haven't used actual vertical bar, because it's used in github's markdown
 ## 4. Data types
 There are 4 data types:
 | Datatype | Explanation |
+|----------|-------------|
 | int | Number between -32768 and 32767 |
 | fixed | Fixed-point number between -128 and 127.996 |
 | char | Ascii character. |
