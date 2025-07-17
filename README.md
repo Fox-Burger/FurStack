@@ -229,5 +229,33 @@ Below are the instructions of the virtual machine.
 | 15 | exit | none | no | none |
 
 alu function
+| Function number | Mnemonic |
+|-----------------|----------|
+| 0 | add |
+| 1 | sub |
+| 2 | mul |
+| 3 | mulu |
+| 4 | div |
+| 5 | divu |
+| 6 | mod |
+| 7 | fmul |
+| 8 | fdiv |
+| 9 | and |
+| 10 | or |
+| 11 | xor |
+| 12 | nor |
+| 13 | sll |
+| 14 | srl |
+| 15 | sra |
 
 cmp functions
+| Function number | Mnemonic |
+|-----------------|----------|
+| 0 | eq |
+| 1 | ne |
+| 2 | gt |
+| 3 | ge |
+| 4 | lt |
+| 5 | le |
+| 6 | gtu |
+| 7 | ltu |
