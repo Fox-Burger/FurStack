@@ -101,14 +101,14 @@ There are all of the keywords
 | endrem | End function and return from it. | 'fn main [code] endfn` |
 | deflab | Define label. | `deflab label` |
 | rem | Start a comment. | `rem [comment] endrem` |
-| endrem | End comment. | 'rem [comment] endrem` |
-| let | Declare variable. | 'let int result' |
-| const | Declare constant. | 'const fixed pi 3.141' |
-| array | Declare array. | 'array char message 25' |
-| set | Store value to given memory location. | 'result 0 set' |
-| fetch | Load value from given memory location. | 'result fetch' |
-| true | Push -1 to the stack. | 'true' |
-| false | Push 0 to the stack. | 'false' |
+| endrem | End comment. | `rem [comment] endrem` |
+| let | Declare variable. | `let int result` |
+| const | Declare constant. | `const fixed pi 3.141` |
+| array | Declare array. | `array char message 25` |
+| set | Store value to given memory location. | `result 0 set` |
+| fetch | Load value from given memory location. | `result fetch` |
+| true | Push -1 to the stack. | `true` |
+| false | Push 0 to the stack. | `false` |
 | if | If condition is not 0, execute code after it, otherwise go to corresponding `else` keyword or `then` keyword. | `[condition] if [code] else [code] then` |
 | else | Execute code after it, if condition failed. | `[condition] if [code] else [code] then` |
 | then | End conditional statement. | `[condition] if [code] else [code] then` |
