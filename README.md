@@ -122,6 +122,8 @@ There are all of the keywords
 | cls | Clear terminal. | `cls` |
 | getin | Check for any input and put value of ascii character if any found, otherwise push 0. | `getin` |
 
+---
+
 ## 3. Operators
 As said above, there are 25 operators. Below they are listed.
 | Operator | Explanation | Example |
@@ -153,6 +155,8 @@ As said above, there are 25 operators. Below they are listed.
 | drop | Discard top stack value. | `2 3 dup rem now the stack is 1 2 endrem` |
 Note: I haven't used actual vertical bar, because it's used in github's markdown for tables.
 
+---
+
 ## 4. Data types
 There are 4 data types:
 | Datatype | Explanation |
@@ -161,10 +165,13 @@ There are 4 data types:
 | fixed | Fixed-point number between -128 and 127.996 |
 | char | Ascii character. |
 | bool | True or false. |
+
 Notes:
 1. Fixed point numbers are like floats, but decimal place is in the same spot.
 2. Data types do nothing. You still can add character to a number. It's up to programmer to enforce it.
 3. Yes, you can even store different values in variables with other data types. Even in bool.
+
+---
 
 ## 5. Other stuff
 Except for mentioned keywords, operators and data types, there are also other things.
@@ -196,6 +203,8 @@ Small notes:
 * The language is still work in progress, so some things might change.
 * Assembled programs are in fact text files. The reason this is a thing, is because I wanted to use it with circuit simulator.
 * If you wonder why the name is FurStack, just know it has something to do with furries.
+
+---
 
 ## 6. FurStack Virtual Machine and it's assembly
 As you probably noticed, compiler and assembler are separate. So if you don't value your sanity(or if you are a masochist), you can program vm in assembly.
