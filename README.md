@@ -153,6 +153,7 @@ As said above, there are 25 operators. Below they are listed.
 | swap | Swap top two stack values. | `2 3 dup rem now the stack is 1 3 2 endrem` |
 | rot | Rotate top three stack values. | `2 3 dup rem now the stack is 2 3 1 endrem` |
 | drop | Discard top stack value. | `2 3 dup rem now the stack is 1 2 endrem` |
+
 Note: I haven't used actual vertical bar, because it's used in github's markdown for tables.
 
 ---
