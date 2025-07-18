@@ -67,6 +67,7 @@ We now have a variable of type integer named result. But to store the result of 
 We can store the result of the calculation into our variable with `set` keyword. But to do it, we need to push another thing into the stack - out variable.
 In FurStack, when you push a variable, you don't push it's value, you push it's pointer. Pointer point to location of variable in memory.
 There are two ways to do it.
+
 1) Push it after the calculation.
 ```
 fn main
@@ -75,6 +76,7 @@ fn main
 endfn
 ```
 We push the pointer of the result variable on the stack. Then there comes the `swap`, which swaps the two top stack values. Then comes the `set` keyword.
+
 2) Push it before the calculation.
 ```
 fn main
@@ -98,7 +100,7 @@ There are all of the keywords
 |---------|-------------|---------------|
 | include | Include another FurStack program. | `include uwu.fu` |
 | fn | Define function. | `fn main [code] endfn` |
-| endrem | End function and return from it. | 'fn main [code] endfn` |
+| endrem | End function and return from it. | `fn main [code] endfn` |
 | deflab | Define label. | `deflab label` |
 | rem | Start a comment. | `rem [comment] endrem` |
 | endrem | End comment. | `rem [comment] endrem` |
@@ -200,7 +202,7 @@ Small notes:
 * Constants are not stored in memory of it's virtual machine. They are compiled to definitions.
 * Yes, you can do weird stuff with the variable pointer.
 * `bye` keyword is optional.
-* There must be only one main function, either in your program, or the program to which is imported. The compiler will to complain, but the assembler will.
+* There must be only one main function, either in your program, or the program to which is imported. The compiler won't complain, but the assembler will.
 * The language is still work in progress, so some things might change.
 * Assembled programs are in fact text files. The reason this is a thing, is because I wanted to use it with circuit simulator.
 * If you wonder why the name is FurStack, just know it has something to do with furries.
