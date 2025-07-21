@@ -228,8 +228,8 @@ Below are the instructions of the virtual machine.
 | 1 | alu | alu function | no | For actual opcodes look into table with alu functions. |
 | 2 | push | value | yes | none |
 | 3 | drop | none | no | none |
-| 4 | pur | register | no | none |
-| 5 | por | register | no | none |
+| 4 | pur | register | no | Push from register |
+| 5 | por | register | no | Pop to register |
 | 6 | sw | none | no | none |
 | 7 | lw | none | no | none |
 | 8 | dup | none | no | none |
