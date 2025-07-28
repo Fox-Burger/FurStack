@@ -182,9 +182,13 @@ End the program.
 
 ## 4. Additional stuff
 Memory map:
+
 0x0000 - 0x7fff = 64KB RAM (read and write)
+
 0x8000 - terminal (write only)
+
 0x8001 - clear terminal (write only)
+
 0x8002 - keyboard (read only)
 
 Notes:
