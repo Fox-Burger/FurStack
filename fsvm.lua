@@ -1,6 +1,6 @@
 #!/usr/bin/env lua
 -- Nocurses, my beloved.
--- Note that nocurses works on Linux, Mac and Cygwin
+-- Note that nocurses works on Linux, Mac and Cygwin.
 local nocurses = require("nocurses")
 
 -- Le error.
@@ -28,7 +28,7 @@ end
 -- Reading program.
 argv = {...}
 debug_mode = false
--- Alternat terminal buffer, because why not.
+-- Alternative terminal buffer, because why not.
 io.write("\27[?1049h")
 if #argv < 1 then
 	runtime_error("No program given.")
@@ -41,6 +41,9 @@ if argv[2] ~= nil then
 	end
 end
 
+if not string.match(argv[1], ".+%.hex") then
+	compileError("Error! The input file is not a program.")
+end
 -- Actually reading the program.
 pf = io.open(argv[1], "r")
 if pf == nil then
@@ -91,6 +94,7 @@ mem = {
 			-- There is getch in no curses, but it requires fucking with it to achieve what I want.
 			-- Something will probably break anyways.
 			if temp ~= false and temp ~= nil then
+				-- haha, fucking up Windows and MacOS users up go brrrr.
 				if temp == "Enter" then
 					d = 10
 				elseif temp == "Tab" then
@@ -159,27 +163,17 @@ cpu = {
 		local r = 0
 		
 		-- Fetch and decode.
-		-- I have no idea why it exists. The program counter will never be above 0xfffff
-		-- This is basically useless code.
-		if p[cpu.pc + 1] == nil then
-			runtime_error("Error! Program counter outside program.")
-		else
-			instr = p[cpu.pc + 1]
-			op = instr >> 4
-			f = instr & 0xf
-			-- Most instruction take one byte of memory, but these take more.
-			if op == 2 or op == 11 or op == 12 or op == 13 then
-				if p[cpu.pc + 2] == nil or p[cpu.pc + 3] == nil then
-					runtime_error("Error! Missing instruction data.")
-				else
-					instr = instr << 8
-					instr = instr + p[cpu.pc + 2]
-					instr = instr << 8
-					instr = instr + p[cpu.pc + 3]
-					imm = instr & 0xffff
-					jaddr = instr & 0xfffff
-				end
-			end
+		instr = p[cpu.pc + 1]
+		op = instr >> 4
+		f = instr & 0xf
+		-- Most instruction take one byte of memory, but these take more.
+		if op == 2 or op == 11 or op == 12 or op == 13 then
+			instr = instr << 8
+			instr = instr + p[cpu.pc + 2]
+			instr = instr << 8
+			instr = instr + p[cpu.pc + 3]
+			imm = instr & 0xffff
+			jaddr = instr & 0xfffff
 		end
 
 		-- Execute.
@@ -187,7 +181,7 @@ cpu = {
 		if op == 0 then
 			-- People will probably look at me like at some war criminal for using goto.
 			goto noop
-		-- Math instructions.
+		-- Math instruction.
 		elseif op == 1 then
 			b = cpu.pop(cpu.stack)
 			a = cpu.pop(cpu.stack)
@@ -268,7 +262,7 @@ cpu = {
 		elseif op == 9  then
 			a = cpu.stack[#cpu.stack - 1]
 			cpu.push(cpu.stack, a)
-		-- Comparison instructions.
+		-- Comparison instruction.
 		elseif op == 10 then
 			b = cpu.pop(cpu.stack)
 			a = cpu.pop(cpu.stack)
@@ -324,7 +318,7 @@ cpu = {
 			cpu.running = false
 		end
 		::noop::
-		-- Remember the comment where I said that something is a useless code? Now you know why.
+		-- Increment PC by 1 and make sure it can fit in 20 bits.
 		cpu.pc = (cpu.pc + 1) & 0xfffff
 	end
 }

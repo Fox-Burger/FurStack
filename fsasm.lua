@@ -6,7 +6,7 @@ function line_split(s, c)
 	local p = 1
 	local w = ""
 	for i in string.gmatch(s, "(.)") do
-		-- MacOs and Windows users are not going to have a fun time figuing out why assembler doesn't properly assembly.
+		-- MacOs and Windows users are not going to have a fun time figuing out why assembler doesn't properly work.
 		if i == "\n" then
 			table.insert(t[p], w)
 			table.insert(t, {})
@@ -31,10 +31,55 @@ function diserror(m)
 	os.exit()
 end
 
--- I will probably change it later to something better.
+-- Is it good? No.
+-- Is it better than the previous thing? Yes.
 argv = {...}
-if #argv < 2 then
-	diserror("Error! Input and output file not specified.")
+pit = 1
+prg_file = ""
+sav_file = ""
+if #argv == 0 or argv[1] == "--help" then
+	diserror("Usage:\n./fsasm.lua [params]\n--help - this message.\n--version - display version.\n-i - input file.\n-o - output file.")
+end
+
+while pit <= #argv do
+	if argv[pit] == "--version" then
+		diserror("FurStack Assembled version 1\nWorks with FurStack v0.1 and FurStack v0.2")
+	elseif argv[pit] == "-i" then
+		if prg_file == "" then
+			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-o" then
+				prg_file = argv[pit + 1]
+				pit = pit + 1
+			else
+				diserror("Error! Input file not given.")
+			end
+		else
+			diserror("Error! There can be only one file given to assemble.")
+		end
+	elseif argv[pit] == "-o" then
+		if sav_file == "" then
+			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-i" then
+				sav_file = argv[pit + 1]
+				pit = pit + 1
+			else
+				diserror("Error! Output file not given.")
+			end
+		else
+			diserror("Error! Output file is already given.")
+		end
+	else
+		diserror("Error! Unknown parameter.")
+	end
+	pit = pit + 1
+end
+
+if prg_file == "" then
+	diserror("Error! No file given.")
+elseif sav_file == "" then
+	sav_file = string.gsub(prg_file, "%.s", "%.hex")
+end
+
+if not string.match(prg_file, ".+%.s") then
+	compileError("Error! The input file is not a assembly program.")
 end
 
 -- All the tables with opcodes, functions and registers. You can probably tell what is what by names of tables.
@@ -126,7 +171,7 @@ regs = {
 }
 
 -- Getting the file.
-pf = io.open(argv[1], "r")
+pf = io.open(prg_file, "r")
 if pf == nil then
 	diserror("Error! File doesn't exists.")
 end
@@ -196,15 +241,15 @@ prg_byte = 0
 -- Even more mess.
 -- This actually assembles the assembly code.
 for i = 1, #instr, 1 do
-	-- some of the instructions are assembled by just one line of code. Yes, they that short.
+	-- Some of the instructions are assembled by just one line of code. Yes, they that short.
 	prg_byte = (opcodes[lns[instr[i]][1]]) << 4
-	-- arithmetic and logic instruction.
+	-- Arithmetic and logic instruction.
 	if prg_byte == 0x10 then
 		prg_byte = prg_byte + alufn[lns[instr[i]][1]]
-	-- push instruction. And yes, instruction length is not constant.
+	-- Push instruction. And yes, instruction lenght is not constant.
 	elseif prg_byte == 0x20 then
 		table.insert(assembled, prg_byte)
-		-- Int, float or definition?
+		-- Integer, float or definition?
 		if defs[lns[instr[i]][2]] then
 			prg_byte = (defs[lns[instr[i]][2]]) >> 8
 			table.insert(assembled, prg_byte)
@@ -226,17 +271,17 @@ for i = 1, #instr, 1 do
 			table.insert(assembled, prg_byte)
 			prg_byte = tonumber(lns[instr[i]][2]) & 0xff
 		end
-	-- the instruction for manipulating the registers.
+	-- The instructions for manipulating the registers.
 	elseif prg_byte == 0x40 or prg_byte == 0x50 then
 		if regs[lns[instr[i]][2]] then
 			prg_byte = prg_byte + regs[lns[instr[i]][2]]
 		else
 			diserror("Error! Invalid register in line " .. instr[i])
 		end
-	-- comparing instructions.
+	-- Comparing instruction.
 	elseif prg_byte == 0xa0 then
 		prg_byte = prg_byte + cmpfn[lns[instr[i]][1]]
-	-- jumping instructions. jump, conditional jum and call
+	-- Jumping instructions. jump, conditional jump and call.
 	elseif prg_byte == 0xb0 or prg_byte == 0xc0 or prg_byte == 0xd0 then
 		if labels[lns[instr[i]][2]] then
 			prg_byte = prg_byte + (labels[lns[instr[i]][2]] >> 16)
@@ -264,7 +309,7 @@ end
 -- This is the part where this abomination of assembly code is stored.
 -- If you wonder why it's stored like this, just know that I wanted to use it with circuit simulator.
 -- I might change it later.
-sf = io.open(argv[2], "w")
+sf = io.open(sav_file, "w")
 sf.write(sf, "v2.0 raw\n")
 for i = 1, #assembled, 1 do
 	sf.write(sf, string.format("%x", assembled[i]) .. "\n")

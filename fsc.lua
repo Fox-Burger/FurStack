@@ -6,7 +6,8 @@ function compileError(m)
 	os.exit()
 end
 
--- I once recreated part of it in school out of boredom and it pushed empty line.
+-- I once created something similar in school because I was bored.
+-- It pushed an empty string so I added this.
 function insertCheck(t, v)
 	if v ~= "" then
 		table.insert(t, v)
@@ -24,7 +25,7 @@ function contains(t, v)
 	return isIn
 end
 
--- This exists, because later the will be no lines.
+-- This exists, because later there will be no lines.
 function getLn(it, t)
 	local l = 0
 	for i = 1, #t, 1 do
@@ -45,8 +46,8 @@ function parse(p, f)
 	local word = ""
 	local strMod = false
 	local escCh = false
-	local keywords = {"include", "fn", "endfn", "deflab", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "if", "else", "then", "while", "do",
-	"endwhile", "goto", "gofn", "bye", "put", "cls", "getin"}
+	local keywords = {"include", "fn", "endfn", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "if", "else", "then", "while", "do", "endwhile", "repeat", "until", "bye", "put",
+	"cls", "getin"}
 	local operators = {"+", "-", "*", "fmul", "/", "fdiv", "%", "&", "|", "~", "!", "<<", ">>", ">>>", "=", "~=", ">", ">=", "<", "<=", "dup", "over", "swap", "rot", "drop"}
 	local dataTypes = {"int", "fixed", "char", "bool"}
 	local tmp1 = ""
@@ -102,7 +103,7 @@ function parse(p, f)
 					table.insert(lnNums, #t + 1)
 				end
 				word = ""
-			-- The " character is kept for later.
+			-- The " characters are kept for later.
 			elseif i == "\"" then
 				strMod = true
 				word = word .. "\""
@@ -120,8 +121,8 @@ function parse(p, f)
 				com = false
 			end
 			table.insert(ft, t[iter])
-		-- Is it keyword, operator, variable, number or string?
-		elseif contains(keywords, t[iter]) or contains(operators, t[iter]) or contains(vars, t[iter]) or tonumber(t[iter]) or string.match(t[iter], "\".*\"") then
+		-- Is it keyword, operator, variable, number, string or function?
+		elseif contains(keywords, t[iter]) or contains(operators, t[iter]) or contains(vars, t[iter]) or tonumber(t[iter]) or string.match(t[iter], "\".*\"") or contains(fns, t[iter]) then
 			if t[iter] == "include" then
 				iter = iter + 1
 				-- It needs to be a FurStack program.
@@ -134,7 +135,7 @@ function parse(p, f)
 					end
 					tmp3 = tmp2.read(tmp2, "*all")
 					io.close(tmp2)
-					-- This is the first time I use recursion. Not in some serious program but a shitty compiler.
+					-- This is the first time I use recursion. Not in some serious program but inside a shitty compiler.
 					tmp4 = parse(tmp3, tmp1)
 					for i = 1, #tmp4, 1 do
 						table.insert(ft, tmp4[i])
@@ -147,7 +148,7 @@ function parse(p, f)
 			-- I have no idea how dumb someone needs to be to do it.
 			elseif t[iter] == "endrem" then
 				compileError("Error! 'endrem' keyword is before 'rem' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
-			-- Function, more like shitty copy of subroutine from basic.
+			-- Function. It doesn't take any parameters, because they are expected to be on the stack.
 			elseif t[iter] == "fn" then
 				if contains(fns, t[iter + 1]) then
 					compileError("Error! Function " .. t[iter + 1] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
@@ -165,34 +166,6 @@ function parse(p, f)
 					table.remove(fnStack)
 					table.insert(ft, t[iter])
 				end
-			-- Basically gosub from Basic.
-			elseif t[iter] == "gofn" then
-				if contains(fns, t[iter + 1]) then
-					table.insert(ft, t[iter])
-					table.insert(ft, t[iter + 1])
-				else
-					compileError("Error! Undefinded function in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				end
-				iter = iter + 1
-			-- Label.
-			elseif t[iter] == "deflab" then
-				if contains(fns, t[iter + 1]) then
-					compileError("Error! Label " .. t[iter + 1] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				else
-					table.insert(labs, t[iter + 1])
-					table.insert(ft, t[iter])
-					table.insert(ft, t[iter + 1])
-				end
-				iter = iter + 1
-			-- Goto, because fuck you. I can add it. It's my language.
-			elseif t[iter] == "goto" then
-				if contains(labs, t[iter + 1]) then
-					table.insert(ft, t[iter])
-					table.insert(ft, t[iter + 1])
-				else
-					compileError("Error! Undefinded label in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				end
-				iter = iter + 1
 			-- This was also inspired by Basic.
 			elseif t[iter] =="let" then
 				if contains(dataTypes, t[iter + 1]) then
@@ -232,7 +205,7 @@ function parse(p, f)
 					compileError("Error! Invalid datatype in line " .. getLn(iter, lnNums) .. " inside " .. f)
 				end
 				iter = iter + 3
-			-- The name of keyword explains it.
+			-- The name of keyword explains itself.
 			elseif t[iter] == "array" then
 				if contains(dataTypes, t[iter + 1]) then
 					if contains(vars, t[iter + 2]) then
@@ -275,7 +248,7 @@ function parse(p, f)
 					table.remove(ifStack)
 					table.insert(ft, t[iter])
 				end
-			-- While loop. Also, don't hope for me adding for loop.
+			-- While loop. I might add for loop when I figure out how the fuck does it work.
 			elseif t[iter] == "while" then
 				loopCount = loopCount + 1
 				table.insert(loopStack, loopCount)
@@ -284,6 +257,8 @@ function parse(p, f)
 			elseif t[iter] == "do" then
 				if #loopStack == 0 then
 					compileError("Error! 'do' keyword before 'while' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				elseif #loops[loopStack[#loopStack]] == 2 then
+					compileError("Error! 'do' keyword used for repeat until loop in line " .. getLn(iter, lnNums) .. " inside " .. f)
 				else
 					loops[loopStack[#loopStack]][2] = iter
 					table.insert(ft, t[iter])
@@ -291,6 +266,8 @@ function parse(p, f)
 			elseif t[iter] == "endwhile" then
 				if #loopStack == 0 then
 					compileError("Error! 'endwhile' keyword before 'while' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				elseif #loops[loopStack[#loopStack]] == 2 then
+					compileError("Error! 'endwhile' keyword used for repeat until loop in line " .. getLn(iter, lnNums) .. " inside " .. f)
 				else
 					if loops[loopStack[#loopStack]][2] == 0 then
 						compileError("Error! 'endwhile' keyword before 'do' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
@@ -299,6 +276,22 @@ function parse(p, f)
 						table.remove(loopStack)
 						table.insert(ft, t[iter])
 					end
+				end
+			-- repeat until loop. It's like while loop, but it will always execute at least once.
+			elseif t[iter] == "repeat" then
+				loopCount = loopCount + 1
+				table.insert(loopStack, loopCount)
+				table.insert(loops, {iter, 0})
+				table.insert(ft, t[iter])
+			elseif t[iter] == "until" then
+				if #loopStack == 0 then
+					compileError("Error! 'until' keyword before 'repeat' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				elseif #loops[loopStack[#loopStack]] == 3 then
+					compileError("Error! 'until' keyword used for while loop in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				else
+					loops[loopStack[#loopStack]][2] = iter
+					table.remove(loopStack)
+					table.insert(ft, t[iter])
 				end
 			-- Numbers.
 			elseif math.type(tonumber(t[iter])) == "integer" then
@@ -336,17 +329,58 @@ function parse(p, f)
 	return ft
 end
 
--- I will redo the thing.
+-- It's still shit.
 argv = {...}
+pit = 1
+prg_file = ""
+sav_file = ""
+if #argv == 0 or argv[1] == "--help" then
+	diserror("Usage:\n./fsc.lua [params]\n--help - this message.\n--version - display version.\n-i - input file.\n-o - output file.")
+end
 
-if #argv < 2 then
-	compileError("Error! Not all parameters given.")
-elseif not string.match(argv[1], ".+%.fu") then
+while pit <= #argv do
+	if argv[pit] == "--version" then
+		diserror("FurStack version 0.2.1")
+	elseif argv[pit] == "-i" then
+		if prg_file == "" then
+			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-o" then
+				prg_file = argv[pit + 1]
+				pit = pit + 1
+			else
+				diserror("Error! Input file not given.")
+			end
+		else
+			diserror("Error! There can be only one file given to assemble.")
+		end
+	elseif argv[pit] == "-o" then
+		if sav_file == "" then
+			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-i" then
+				sav_file = argv[pit + 1]
+				pit = pit + 1
+			else
+				diserror("Error! Output file not given.")
+			end
+		else
+			diserror("Error! Output file is already given.")
+		end
+	else
+		diserror("Error! Unknown parameter.")
+	end
+	pit = pit + 1
+end
+
+if prg_file == "" then
+	diserror("Error! No file given.")
+elseif sav_file == "" then
+	sav_file = string.gsub(prg_file, "%.fu", "%.s")
+end
+
+if not string.match(prg_file, ".+%.fu") then
 	compileError("Error! The input file is not a FurStack program.")
 end
 
 -- Reading program.
-prg = io.open(argv[1], "r")
+prg = io.open(prg_file, "r")
 if prg == nil then
 	compileError("Error! File doesn't exist.")
 end
@@ -356,16 +390,17 @@ io.close(prg)
 -- The reason those are global, is include keyword.
 vars = {}
 fns = {}
-labs = {}
-included = {argv[1]}
+included = {prg_file}
 -- The start of this madness.
-words = parse(content, argv[1])
+words = parse(content, prg_file)
 
 it = 1
 stackCond = {}
 countCond = 0
 stackLoop = {}
 countLoop = 0
+stackRep = {}
+countRep = 0
 var = {}
 var_addr = 0
 temp1 = ""
@@ -380,7 +415,7 @@ compiled = {
 }
 
 -- This is the second longest part og the program. The first one is the parse function.
--- The compiled code will probably not be that far behind assembly code written by human.
+-- The compiled code will probably not be that far behind assembly code written by human. The VM is a stack machine.
 -- Yes, you can program FurStack Virtual Machine in assembly.
 while it <= #words do
 	-- Numbers, string and variables.
@@ -406,7 +441,7 @@ while it <= #words do
 			it = it + 1
 		end
 		table.insert(compiled, temp1 .. "\n")
-	elseif words[it] == "fn" or words[it] == "deflab" then
+	elseif words[it] == "fn" then
 		table.insert(compiled, "deflab " .. words[it + 1] .. "\n")
 		it = it + 1
 	elseif words[it] == "endfn" then
@@ -473,12 +508,16 @@ while it <= #words do
 		table.insert(compiled, "j while" .. stackLoop[#stackLoop] .. "\n")
 		table.insert(compiled, "deflab endwhile" .. stackLoop[#stackLoop] .. "\n")
 		table.remove(stackLoop)
-	elseif words[it] == "goto" then
-		table.insert(compiled, "j " .. words[it + 1] .. "\n")
-		it = it + 1
-	elseif words[it] == "gofn" then
-		table.insert(compiled, "cal " .. words[it + 1] .. "\n")
-		it = it + 1
+	elseif words[it] == "repeat" then
+		countRep = countRep + 1
+		table.insert(stackRep, countRep)
+		table.insert(compiled, "deflab repeat" .. countRep .. "\n")
+	elseif words[it] == "until" then
+		table.insert(compiled, "deflab until" .. stackRep[#stackRep] .. "\n")
+		table.insert(compiled, "jc repeat" .. stackRep[#stackRep] .. "\n")
+	-- There used to be gofn. Now it's just function name.
+	elseif contains(fns, words[it]) then
+		table.insert(compiled, "cal " .. words[it] .. "\n")
 	elseif words[it] == "bye" then
 		table.insert(compiled, "exit\n")
 	elseif words[it] == "put" then
@@ -558,7 +597,7 @@ while it <= #words do
 end
 
 -- Compiled. Now it can be saved.
-asm = io.open(argv[2], "w")
+asm = io.open(sav_file, "w")
 for i = 1, #compiled, 1 do
 	asm.write(asm, compiled[i])
 end
