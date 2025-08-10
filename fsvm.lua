@@ -25,6 +25,15 @@ function convert(s)
 	return t
 end
 
+-- Lua interprets one byte as character. There are probably better ways to do it, but whatever.
+function lastCharSize(s)
+	local l = 0
+	for p, _ in utf8.codes(s) do
+		l = p
+	end
+	return #s - l + 1
+end
+
 -- Reading program.
 argv = {...}
 debug_mode = false
@@ -32,6 +41,10 @@ debug_mode = false
 io.write("\27[?1049h")
 if #argv < 1 then
 	runtime_error("No program given.")
+end
+
+if argv[1] == "--version" then
+	runtime_error("FurStack Virtual Machine version 1.2")
 end
 
 -- It's not very useful, believe me.
@@ -70,7 +83,11 @@ mem = {
 		elseif addr == 0x8000 then
 			-- This is probably one of the worst implementations of terminal.
 			if d == 8 then
-				mem.term = string.sub(mem.term, 1, -2)
+				if lastCharSize(mem.term) > 1 then
+					mem.term = string.sub(mem.term, 1, -3)
+				else
+					mem.term = string.sub(mem.term, 1, -2)
+				end
 				nocurses.clrscr()
 			else
 				mem.term = mem.term .. utf8.char(d)
@@ -90,7 +107,7 @@ mem = {
 			d = mem.ram[addr + 1]
 		elseif addr == 0x8002 then
 			-- This is the main reason for nocurses being used.
-			temp = nocurses.getkey(0.1)
+			temp = nocurses.getkey(0.05)
 			-- There is getch in no curses, but it requires fucking with it to achieve what I want.
 			-- Something will probably break anyways.
 			if temp ~= false and temp ~= nil then
@@ -113,6 +130,8 @@ mem = {
 			else
 				d = 0
 			end
+		elseif addr == 0x8003 then
+			d = os.time() & 0xffff
 		end
 		return d
 	end

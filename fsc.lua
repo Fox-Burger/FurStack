@@ -46,8 +46,8 @@ function parse(p, f)
 	local word = ""
 	local strMod = false
 	local escCh = false
-	local keywords = {"include", "fn", "endfn", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "if", "else", "then", "while", "do", "endwhile", "repeat", "until", "bye", "put",
-	"cls", "getin"}
+	local keywords = {"include", "fn", "endfn", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "utime", "if", "else", "then",
+	"while", "do", "endwhile", "repeat", "until", "bye", "put", "cls", "getin"}
 	local operators = {"+", "-", "*", "fmul", "/", "fdiv", "%", "&", "|", "~", "!", "<<", ">>", ">>>", "=", "~=", ">", ">=", "<", "<=", "dup", "over", "swap", "rot", "drop"}
 	local dataTypes = {"int", "fixed", "char", "bool"}
 	local tmp1 = ""
@@ -55,7 +55,7 @@ function parse(p, f)
 	local tmp3 = ""
 	local tmp4 = {}
 	local com = false
-	local fnStack = {}
+	local fnInside = false
 	local ifStack = {}
 	local loopStack = {}
 	local ifCount = 0
@@ -79,6 +79,12 @@ function parse(p, f)
 					word = word .. "\t"
 				elseif i == "n" then
 					word = word .. "\n"
+				elseif i == "b" then
+					word = word .. "\b"
+				elseif i == "r" then
+					word = word .. "\r"
+				elseif i == "e"  then
+					word = word .. "\27"
 				else
 					compileError("Error! Invalid escape sequence in line " .. #lnNums .. " inside " .. f)
 				end
@@ -152,18 +158,20 @@ function parse(p, f)
 			elseif t[iter] == "fn" then
 				if contains(fns, t[iter + 1]) then
 					compileError("Error! Function " .. t[iter + 1] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				elseif fnInside then
+					compileError("Error! Trying to define function inside function in line " .. getLn(iter, lnNums) .. " inside " .. f)
 				else
 					table.insert(fns, t[iter + 1])
-					table.insert(fnStack, t[iter + 1])
+					fnInside = true
 					table.insert(ft, t[iter])
 					table.insert(ft, t[iter + 1])
 				end
 				iter = iter + 1
 			elseif t[iter] == "endfn" then
-				if #fnStack == 0 then
+				if not fnInside then
 					compileError("Error! 'endfn' keyword appeared before 'fn' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
 				else
-					table.remove(fnStack)
+					fnInside = false
 					table.insert(ft, t[iter])
 				end
 			-- This was also inspired by Basic.
@@ -318,7 +326,7 @@ function parse(p, f)
 	end
 	
 	-- You forgot something.
-	if #fnStack > 0 then
+	if fnInside then
 		compileError("Error! Function " .. fnStack[1] .. " is unclosed inside " .. f)
 	elseif #ifStack > 0 then
 		compileError("Error! Conditional statement from line " .. getLn(ifStack[1][1], lnNums) .. " inside " .. f .. " is unclosed.")
@@ -340,7 +348,7 @@ end
 
 while pit <= #argv do
 	if argv[pit] == "--version" then
-		diserror("FurStack version 0.2.1")
+		diserror("FurStack version 0.2.2")
 	elseif argv[pit] == "-i" then
 		if prg_file == "" then
 			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-o" then
@@ -479,6 +487,9 @@ while it <= #words do
 		table.insert(compiled, "push -1\n")
 	elseif words[it] == "false" then
 		table.insert(compiled, "push 0\n")
+	elseif words[it] == "utime" then
+		table.insert(compiled, "push 0x8003\n")
+		table.insert(compiled, "lw\n")
 	elseif words[it] == "if" then
 		countCond = countCond + 1
 		table.insert(stackCond, {countCond, false})
