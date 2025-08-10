@@ -143,7 +143,7 @@ fn main
 endfn
 ```
 The program will write the letter "A" to the terminal. Now lets talk for a bit about booleans. They can be either true or false. FurStack has true and false keywords.
-keyword true pushes -1 to the stack and keyword false pushes 0 to the stack. Keyword true could be anything. For FurStack, 0 is false and everything else is true.
+keyword true pushes -1 to the stack and keyword false pushes 0 to the stack. Keyword true could be anything. For FurStack, 0 is false and everything else is true. Another thing I will mention shortly is utime keyword. It pushes the time since midnight 01.01.1970 in seconds. Note that it's only the last 16-bits.
 
 ---
 
@@ -381,6 +381,7 @@ Keywords:
 22. put
 23. cls
 24. getin
+25. utime
 
 Operators:
 1. `+`
@@ -425,6 +426,6 @@ Escape codes:
 notes:
 1. The compile, assemble and virtual machine interpret ASCII code 10 as new line. This will cause problems for Windows and MacOS users.
 2. As I said, you can manipulate variable pointer. As you can guess, you can screew yourself if you not careful.
-3. The must always one maine function. Otherwise compiler or assembler will complain.
+3. The must always be one main function. Otherwise compiler or assembler will complain.
 4. Language design is not final. Things might change, but the language will remain concatenative.
 5. If you wonder about the name of the language, just know it has something to do with furries.

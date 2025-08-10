@@ -191,6 +191,8 @@ Memory map:
 
 0x8002 - keyboard (read only)
 
+0x8003 - time (read only)
+
 Notes:
 1. Assembled program is a text file, not a binary file. It's because I wanted to use it with a circuit simulator. I might change it later.
 2. Instruction noop has code 0 and exit has 15. Yes, those instructions are written in asscending order from 0 to 15.
