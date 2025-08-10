@@ -422,6 +422,9 @@ Escape codes:
 3. `\\` - backwards slash
 4. \' - quote
 5. \" - double quote
+6. \b - backspace
+7. \r - carriage return
+8. \e - escape sequence
 
 notes:
 1. The compile, assemble and virtual machine interpret ASCII code 10 as new line. This will cause problems for Windows and MacOS users.
