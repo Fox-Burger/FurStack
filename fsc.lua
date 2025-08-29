@@ -1,615 +1,614 @@
 #!/usr/bin/env lua
--- This compiler is looooooooooooooooong.
--- It's also even bigger mess than the assembled.
-function compileError(m)
-	print("\27[91m" .. m .. "\27[0m")
-	os.exit()
-end
+require("common")
 
--- I once created something similar in school because I was bored.
--- It pushed an empty string so I added this.
-function insertCheck(t, v)
-	if v ~= "" then
-		table.insert(t, v)
-	end
-end
-
--- Check if value is in table.
-function contains(t, v)
-	local isIn = false
-	for i = 1, #t, 1 do
-		if t[i] == v then
-			isIn = true
-		end
-	end
-	return isIn
-end
-
--- This exists, because later there will be no lines.
-function getLn(it, t)
-	local l = 0
-	for i = 1, #t, 1 do
-		if t[i] > it then
-			break
-		else
-			l = l + 1
-		end
-	end
-	return l
-end
-
--- The function that just splits program into words and does shitty error check.
-function parse(p, f)
-	local t = {}
-	local ft = {}
-	local lnNums = {1}
-	local word = ""
+-- Splits the source code.
+function tokenize(s, f)
+	local tab = {}
+	local lin = {1}
 	local strMod = false
-	local escCh = false
-	local keywords = {"include", "fn", "endfn", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "utime", "if", "else", "then",
-	"while", "do", "endwhile", "repeat", "until", "bye", "put", "cls", "getin"}
-	local operators = {"+", "-", "*", "fmul", "/", "fdiv", "%", "&", "|", "~", "!", "<<", ">>", ">>>", "=", "~=", ">", ">=", "<", "<=", "dup", "over", "swap", "rot", "drop"}
-	local dataTypes = {"int", "fixed", "char", "bool"}
-	local tmp1 = ""
-	local tmp2 = ""
-	local tmp3 = ""
-	local tmp4 = {}
-	local com = false
-	local fnInside = false
-	local ifStack = {}
-	local loopStack = {}
-	local ifCount = 0
-	local loopCount = 0
-	local ifs = {}
-	local loops = {}
-	local iter = 1
-
-	-- The simple part of it.
-	for i in string.gmatch(p, "(.)") do
+	local escCod = false
+	local isMac = false
+	local word = ""
+	local ln = 1
+	-- All supported escape sequences.
+	local codes = {
+		["0"] = "\0",
+		b = "\b",
+		t = "\t",
+		n = "\n",
+		r = "\r",
+		e = "\27",
+		["\\"] = "\\",
+		["\""] = "\"",
+		["'"] = "\'"
+	}
+	for i in string.gmatch(s, "(.)") do
+		-- Is it string?
 		if strMod then
-			-- I know there are more escape sequences, but that's all I will include.
-			if escCh then
-				if i == "\\" then
-					word = word .. "\\"
-				elseif i == "\"" then
-					word = word .. "\""
-				elseif i == "'" then
-					word = word .. "'"
-				elseif i == "t" then
-					word = word .. "\t"
-				elseif i == "n" then
-					word = word .. "\n"
-				elseif i == "b" then
-					word = word .. "\b"
-				elseif i == "r" then
-					word = word .. "\r"
-				elseif i == "e"  then
-					word = word .. "\27"
+			if escCod then
+				if codes[i] then
+					word = word .. codes[i]
+					escCod = false
 				else
-					compileError("Error! Invalid escape sequence in line " .. #lnNums .. " inside " .. f)
+					disError("Invalid escape sequence in line " .. ln .. " inside " .. f)
 				end
-				escCh = false
-			-- Check for \ symbol.
 			elseif i == "\\" then
-				escCh = true
-			elseif i == "\"" then
-				strMod = false
-				word = word .. "\""
-			elseif i == "\n" then
-				compileError("Error! Unclosed string in line " .. #lnNums .. " inside " .. f)
+				escCod = true
 			else
-				word = word .. i
+				if i == "\"" then
+					word = word .. "\""
+					strMod = false
+				elseif i == "\n" or i == "\r" then
+					disError("Unclosed string in line " .. ln .. " inside " .. f)
+				else
+					word = word .. i
+				end
 			end
+		-- Everything else.
 		else
-			-- If you wonder, yes you code can be shaped how you want.
-			-- It can be shaped like donut or square or your mom.
 			if string.match(i, "%s") then
-				insertCheck(t, word)
-				if i == "\n" then
-					table.insert(lnNums, #t + 1)
+				checkInsert(tab, word)
+				if i == "\n" or i == "\r" then
+					isMac = i == "\r"
+					table.insert(lin, #tab)
+					ln = ln + 1
 				end
 				word = ""
-			-- The " characters are kept for later.
 			elseif i == "\"" then
+				word = "\""
 				strMod = true
-				word = word .. "\""
 			else
 				word = word .. i
 			end
 		end
 	end
-	
-	-- The error check part.
+	checkInsert(tab, word)
+	return tab, lin, isMac
+end
+
+-- After the tokenize function our source code no longer has line. It's now a list of words.
+function getLn(v, l)
+	local lin = 0
+	for i = 1, #l do
+		if v >= l[i] then
+			lin = l[i]
+		else
+			break
+		end
+	end
+	return lin
+end
+
+-- Is it inside the table.
+function isIn(t, v)
+	local found = false
+	for i = 1, #t do
+		if t[i] == v then
+			found = true
+		end
+	end
+	return found
+end
+
+-- Combine two tables.
+function concatTab(t1, t2)
+	for i = 1, #t2 do
+		table.insert(t1, t2[i])
+	end
+end
+
+-- Very shitty error check.
+function errorCheck(t, l, f)
+	local tab = {}
+	local fns = {}
+	local vars = {}
+	local ifStack = {}
+	local whileStack = {}
+	local repeatStack = {}
+	local forStack = {}
+	-- All supported words.
+	local words = {"include", "fn", "endfn", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "if", "else", "then", "while", "do",
+	"endwhile", "repeat", "until", "loop", "for", "bye", "put", "cls", "getin", "utime", "rand",
+	"+", "-", "*", "u*", "fmul", "/", "u/", "fdiv", "%", "&", "|", "~", "!", "<<", ">>", ">>>", "=", "~=", ">", "<", ">=", "<=", "u>", "u<", "u>=", "u<=",
+	"dup", "over", "tuck", "swap", "rot", "crot", "drop", "nip", ">i", "i@", "i>"}
+	local iter = 1
+	local temp1 = ""
+	local temp2 = ""
+	local temp3 = ""
+	local temp4 = {}
+	local temp5 = {}
+	local temp6 = {}
+	local temp7 = {}
+	local temp8 = {}
+	local com = false
+	local inFn = false
 	while iter <= #t do
-		-- Comment. I probably don't need to say anything.
+		-- Is it comment?
 		if com then
 			if t[iter] == "endrem" then
 				com = false
 			end
-			table.insert(ft, t[iter])
-		-- Is it keyword, operator, variable, number, string or function?
-		elseif contains(keywords, t[iter]) or contains(operators, t[iter]) or contains(vars, t[iter]) or tonumber(t[iter]) or string.match(t[iter], "\".*\"") or contains(fns, t[iter]) then
+		-- Is it a word.
+		elseif isIn(words, t[iter]) then
 			if t[iter] == "include" then
 				iter = iter + 1
-				-- It needs to be a FurStack program.
-				tmp1 = string.gsub(f, "%w+%.fu", t[iter])
-				tmp1 = string.gsub(tmp1, "%w+/%.%.", "")
-				if not contains(included, tmp1) then
-					tmp2 = io.open(tmp1, "r")
-					if tmp2 == nil then
-						compileError("Error! File given after 'include' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f .. " doesn't exists.")
+				temp1 = string.gsub(f, "[%w_]+%.fu", t[iter])
+				if not isIn(files, temp1) then
+					temp2 = io.open(temp1, "r")
+					if temp2 == nil then
+						disError("File described in line " .. getLn(iter, l) .. " inside " .. f .. " doesn't exists.")
 					end
-					tmp3 = tmp2.read(tmp2, "*all")
-					io.close(tmp2)
-					-- This is the first time I use recursion. Not in some serious program but inside a shitty compiler.
-					tmp4 = parse(tmp3, tmp1)
-					for i = 1, #tmp4, 1 do
-						table.insert(ft, tmp4[i])
-					end
+					temp3 = temp2.read(temp2, "*all")
+					io.close(temp2)
+					temp4, temp5 = tokenize(temp3, temp1)
+					temp6, temp7, temp8 = errorCheck(temp4, temp5, temp1)
+					concatTab(tab, temp6)
+					concatTab(vars, temp7)
+					concatTab(fns, temp8)
 				end
-			-- This was inspired by Basic.
+			elseif t[iter] == "fn" then
+				table.insert(tab, t[iter])
+				iter = iter + 1
+				if isIn(fns, t[iter]) then
+					disError("Function " .. t[iter] .. " is being defined again in line " .. getLn(iter, l) .. " inside " .. f)
+				elseif inFn then
+					disError("Trying to define function inside function in line " .. getLn(iter, l) .. " inside " .. f)
+				else
+					table.insert(fns, t[iter])
+					table.insert(tab, t[iter])
+					inFn = true
+				end
+			elseif t[iter] == "endfn" then
+				if not inFn then
+					disError("endfn word appeared before fn word in line " .. getLn(iter, l) .. " inside " .. f)
+				else
+					inFn = false
+					table.insert(tab, t[iter])
+				end
 			elseif t[iter] == "rem" then
 				com = true
-				table.insert(ft, t[iter])
-			-- I have no idea how dumb someone needs to be to do it.
-			elseif t[iter] == "endrem" then
-				compileError("Error! 'endrem' keyword is before 'rem' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
-			-- Function. It doesn't take any parameters, because they are expected to be on the stack.
-			elseif t[iter] == "fn" then
-				if contains(fns, t[iter + 1]) then
-					compileError("Error! Function " .. t[iter + 1] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				elseif fnInside then
-					compileError("Error! Trying to define function inside function in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				else
-					table.insert(fns, t[iter + 1])
-					fnInside = true
-					table.insert(ft, t[iter])
-					table.insert(ft, t[iter + 1])
-				end
+			elseif t[iter] == "let" then
+				table.insert(tab, t[iter])
 				iter = iter + 1
-			elseif t[iter] == "endfn" then
-				if not fnInside then
-					compileError("Error! 'endfn' keyword appeared before 'fn' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				if isIn(vars, t[iter]) then
+					disError("Trying to declare variable again in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					fnInside = false
-					table.insert(ft, t[iter])
+					table.insert(vars, t[iter])
+					table.insert(tab, t[iter])
 				end
-			-- This was also inspired by Basic.
-			elseif t[iter] =="let" then
-				if contains(dataTypes, t[iter + 1]) then
-					if contains(vars, t[iter + 2]) then
-						compileError("Error! Variable " .. t[iter + 2] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
-					else
-						table.insert(vars, t[iter + 2])
-						table.insert(ft, t[iter])
-						table.insert(ft, t[iter + 1])
-						table.insert(ft, t[iter + 2])
-					end
-				else
-					compileError("Error! Invalid datatype in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				end
-				iter = iter + 2
-			-- Constant.
 			elseif t[iter] == "const" then
-				if contains(dataTypes, t[iter + 1]) then
-					if contains(vars, t[iter + 2]) then
-						compileError("Error! Constant " .. t[iter + 2] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
-					else
-						-- This condition is absurdly long. Too damn long.
-						if t[iter + 1] == "int" and tonumber(t[iter + 3]) and tonumber(t[iter + 3]) >= -0x8000 and tonumber(t[iter + 3]) < 0x8000 and math.type(tonumber(t[iter + 3])) == "integer" 
-						or t[iter + 1] == "fixed" and tonumber(t[iter + 3]) and tonumber(t[iter + 3]) >= -128.0 and tonumber(t[iter + 3]) < 127.9961 
-						or t[iter + 1] == "char" and string.match(t[iter + 3], "\".\"") 
-						or t[iter + 1] == "bool" and t[iter + 3] == "true" or t[iter + 3] == "false" then
-							table.insert(vars, t[iter + 2])
-							table.insert(ft, t[iter])
-							table.insert(ft, t[iter + 1])
-							table.insert(ft, t[iter + 2])
-							table.insert(ft, t[iter + 3])
-						else
-							compileError("Error! Invalid data for the constant in line " .. getLn(iter, lnNums) .. " inside " .. f)
-						end
-					end
+				table.insert(tab, t[iter])
+				iter = iter + 1
+				if isIn(vars, t[iter]) then
+					disError("Trying to declare constant again in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					compileError("Error! Invalid datatype in line " .. getLn(iter, lnNums) .. " inside " .. f)
+					table.insert(vars, t[iter])
+					table.insert(tab, t[iter])
+					iter = iter + 1
+					if (tonumber(t[iter]) and string.match(t[iter], "-?(0[bodx])?%x+") and isValNum(tonumber(t[iter]), -0x800000, 0xffffff)) or
+					(tonumber(t[iter]) and string.match(t[iter], "-?(0[bodx])?%x*%.%x+") and isValNum(tonumber(t[iter]), -0x800.000, 0xfff.fff)) or
+					string.match(t[iter], "\".\"") or t[iter] == "true" or t[iter] == "false" then
+						table.insert(tab, t[iter])
+					else
+						disError("Invalid value for constant in line " .. getLn(iter, l) .. " inside " .. f)
+					end
 				end
-				iter = iter + 3
-			-- The name of keyword explains itself.
 			elseif t[iter] == "array" then
-				if contains(dataTypes, t[iter + 1]) then
-					if contains(vars, t[iter + 2]) then
-						compileError("Error! Array " .. t[iter + 2] .. " is being defined again in line " .. getLn(iter, lnNums) .. " inside " .. f)
-					else
-						-- Yes, it's ctrl + c and ctrl + v of const keyword, but condition is shorter.
-						if tonumber(t[iter + 3]) and math.type(tonumber(t[iter + 3])) == "integer" and tonumber(t[iter + 3]) >= -0x8000 and tonumber(t[iter + 3]) < 0x8000 then
-							table.insert(vars, t[iter + 2])
-							table.insert(ft, t[iter])
-							table.insert(ft, t[iter + 1])
-							table.insert(ft, t[iter + 2])
-							table.insert(ft, t[iter + 3])
-						else
-							compileError("Error! Invalid length of array in line " .. getLn(iter, lnNums) .. " inside " .. f)
-						end
-					end
+				table.insert(tab, t[iter])
+				iter = iter + 1
+				if isIn(vars, t[iter]) then
+					disError("Trying to declare array again in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					compileError("Error! Invalid datatype in line " .. getLn(iter, lnNums) .. " inside " .. f)
+					table.insert(vars, t[iter])
+					table.insert(tab, t[iter])
+					iter = iter + 1
+					if tonumber(t[iter]) and isValNum(tonumber(t[iter]), 0x1, 0x7fffff) then
+						table.insert(tab, t[iter])
+					else
+						disError("Invalid ammount of cells for array in line " .. getLn(iter, l) .. " inside " .. f)
+					end
 				end
-				iter = iter + 3
-			-- Conditional statement.
 			elseif t[iter] == "if" then
-				ifCount = ifCount + 1
-				table.insert(ifStack, ifCount)
-				table.insert(ifs, {iter, 0, 0})
-				table.insert(ft, t[iter])
+				table.insert(tab, t[iter])
+				table.insert(ifStack, iter)
 			elseif t[iter] == "else" then
 				if #ifStack == 0 then
-					compileError("Error! 'else' keyword before 'if' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
+					disError("else word before if word in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					ifs[ifStack[#ifStack]][2] = iter
-					table.insert(ft, t[iter])
+					table.insert(tab, t[iter])
 				end
-			-- Yes, conditiona statement ends with then keyword. Just like in Forth.
 			elseif t[iter] == "then" then
 				if #ifStack == 0 then
-					compileError("Error! 'then' keyword before 'if' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
+					disError("then word before if word in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					ifs[ifStack[#ifStack]][3] = iter
+					table.insert(tab, t[iter])
 					table.remove(ifStack)
-					table.insert(ft, t[iter])
 				end
-			-- While loop. I might add for loop when I figure out how the fuck does it work.
 			elseif t[iter] == "while" then
-				loopCount = loopCount + 1
-				table.insert(loopStack, loopCount)
-				table.insert(loops, {iter, 0, 0})
-				table.insert(ft, t[iter])
+				table.insert(tab, t[iter])
+				table.insert(whileStack, {iter, 0})
 			elseif t[iter] == "do" then
-				if #loopStack == 0 then
-					compileError("Error! 'do' keyword before 'while' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				elseif #loops[loopStack[#loopStack]] == 2 then
-					compileError("Error! 'do' keyword used for repeat until loop in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				if #whileStack == 0 then
+					disError("do word before while word in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					loops[loopStack[#loopStack]][2] = iter
-					table.insert(ft, t[iter])
+					table.insert(tab, t[iter])
+					whileStack[#whileStack][2] = iter
 				end
 			elseif t[iter] == "endwhile" then
-				if #loopStack == 0 then
-					compileError("Error! 'endwhile' keyword before 'while' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				elseif #loops[loopStack[#loopStack]] == 2 then
-					compileError("Error! 'endwhile' keyword used for repeat until loop in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				if #whileStack == 0 then
+					disError("endwhile word before while word in line " .. getLn(iter, l) .. " inside " .. f)
+				elseif whileStack[#whileStack][2] == 0 then
+					disError("endwhile word before do word in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					if loops[loopStack[#loopStack]][2] == 0 then
-						compileError("Error! 'endwhile' keyword before 'do' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
-					else
-						loops[loopStack[#loopStack]][3] = iter
-						table.remove(loopStack)
-						table.insert(ft, t[iter])
-					end
+					table.insert(tab, t[iter])
+					table.remove(whileStack)
 				end
-			-- repeat until loop. It's like while loop, but it will always execute at least once.
 			elseif t[iter] == "repeat" then
-				loopCount = loopCount + 1
-				table.insert(loopStack, loopCount)
-				table.insert(loops, {iter, 0})
-				table.insert(ft, t[iter])
+				table.insert(tab, t[iter])
+				table.insert(repeatStack, iter)
 			elseif t[iter] == "until" then
-				if #loopStack == 0 then
-					compileError("Error! 'until' keyword before 'repeat' keyword in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				elseif #loops[loopStack[#loopStack]] == 3 then
-					compileError("Error! 'until' keyword used for while loop in line " .. getLn(iter, lnNums) .. " inside " .. f)
+				if #repeatStack == 0 then
+					disError("until word before repeat word in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					loops[loopStack[#loopStack]][2] = iter
-					table.remove(loopStack)
-					table.insert(ft, t[iter])
+					table.insert(tab, t[iter])
+					table.remove(repeatStack)
 				end
-			-- Numbers.
-			elseif math.type(tonumber(t[iter])) == "integer" then
-				if tonumber(t[iter]) >= -0x8000 and tonumber(t[iter]) < 0x8000 then
-					table.insert(ft, t[iter])
+			elseif t[iter] == "loop" then
+				table.insert(tab, t[iter])
+				table.insert(forStack, iter)
+			elseif t[iter] == "for" then
+				if #forStack == 0 then
+					disError("for word before loop word in line " .. getLn(iter, l) .. " inside " .. f)
 				else
-					compileError("Error! Invalid number in line " .. getLn(iter, lnNums) .. " inside " .. f)
+					table.insert(tab, t[iter])
+					table.remove(forStack)
 				end
-			elseif math.type(tonumber(t[iter])) == "float" then
-				if tonumber(t[iter]) >= -128 and tonumber(t[iter]) < 127.9961 then
-					table.insert(ft, t[iter])
-				else
-					compileError("Error! Invalid number in line " .. getLn(iter, lnNums) .. " inside " .. f)
-				end
-			-- Everything else.
 			else
-				table.insert(ft, t[iter])
+				table.insert(tab, t[iter])
 			end
-		-- You got error.
+		-- Is it a number, string, variable name or function name?
 		else
-			compileError("Error! The word in line " ..getLn(iter, lnNums) .. " inside " .. f .. " can't be understand by compiler.")
+			if not (tonumber(t[iter]) and math.type(tonumber(t[iter])) == "integer" and isValNum(tonumber(t[iter]), -0x800000, 0xffffff)) and
+			not (tonumber(t[iter]) and math.type(tonumber(t[iter])) == "float" and isValNum(tonumber(t[iter]), -0x800.000, 0x7ff.fff)) and
+			not isIn(fns, t[iter]) and not isIn(vars, t[iter]) and not string.match(t[iter], "\".*\"") then
+				disError("Invalid word in line " .. getLn(iter, l) .. " inside " .. f)
+			else
+				table.insert(tab, t[iter])
+			end
 		end
 		iter = iter + 1
 	end
-	
 	-- You forgot something.
-	if fnInside then
-		compileError("Error! Function " .. fnStack[1] .. " is unclosed inside " .. f)
-	elseif #ifStack > 0 then
-		compileError("Error! Conditional statement from line " .. getLn(ifStack[1][1], lnNums) .. " inside " .. f .. " is unclosed.")
-	elseif #loopStack > 0 then
-		compileError("Error! Loop from line " .. getLn(loopStack[1][1], lnNums) .. " inside " .. f .. " is unclosed.")
+	if #ifStack > 0 then
+		disError("There is one unclosed if statement inside " .. f)
+	elseif #whileStack > 0 then
+		disError("There is one unclosed while loop inside " .. f)
+	elseif #repeatStack > 0 then
+		disError("There is one unclosed repeat until loop inside " .. f)
+	elseif #forStack > 0 then
+		disError("There is one unclosed for loop inside " .. f)
 	end
-	
-	return ft
+	return tab, vars, fns
 end
 
--- It's still shit.
+-- The function that compiles the program you given.
+function compile(c, t, s, m)
+	local sf = io.open(s, "w")
+	local nl = ""
+	local iter = 1
+	local temp1 = ""
+	local temp2 = {}
+	local temp3 = ""
+	local temp4 = 0
+	local varAddr = 0
+	local vars = {}
+	local fns = {}
+	local ifCount = 0
+	local ifStack = {}
+	local whileCount = 0
+	local whileStack = {}
+	local repeatCount = 0
+	local repeatStack = {}
+	local forCount = 0
+	local forStack = {}
+	-- Windows users are not going to have a good time figuring out why it doesn't work.
+	if m then
+		nl = "\r"
+	else
+		nl = "\n"
+	end
+	-- Yes, I plan to add option to compile to something else than assembly for fsvm.
+	-- A stuff that will be included in every compiled FurStack program.
+	if t == "fsvm" then
+		sf.write(sf, "cal main" .. nl)
+		sf.write(sf, "exit" .. nl)
+		sf.write(sf, nl)
+	end
+	-- All the words to be compiled.
+	while iter <= #c do
+		-- FurStack virtual machine.
+		if t == "fsvm" then
+			if string.match(c[iter], "\".+\"") then
+				temp1 = string.sub(c[iter], 2, -2)
+				for _, i in utf8.codes(temp1) do
+					table.insert(temp2, i)
+				end
+				while #temp2 > 0 do
+					sf.write(sf, "\tpush " .. temp2[#temp2] .. nl)
+					table.remove(temp2)
+				end
+			elseif tonumber(c[iter]) then
+				sf.write(sf, "\tpush " .. c[iter] .. nl)
+			elseif c[iter] == "fn" then
+				iter = iter + 1
+				table.insert(fns, c[iter])
+				sf.write(sf, "deflab " .. c[iter] .. nl)
+			elseif c[iter] == "endfn" then
+				sf.write(sf, "\tret" .. nl)
+				sf.write(sf, nl)
+			elseif isIn(fns, c[iter]) then
+				sf.write(sf, "\tcal " .. c[iter] .. nl)
+			elseif c[iter] == "let" then
+				iter = iter + 1
+				sf.write(sf, "def " .. c[iter] .. " " .. varAddr .. nl)
+				varAddr = varAddr + 1
+				table.insert(vars, c[iter])
+			elseif c[iter] == "const" then
+				iter = iter + 1
+				table.insert(vars, c[iter])
+				temp1 = c[iter]
+				iter = iter + 1
+				if tonumber(c[iter]) then
+					temp4 = tonumber(c[iter])
+				elseif string.match(c[iter], "\".\"") then
+					temp3 = string.sub(c[iter], 2, -2)
+					temp4 = utf8.codepoint(temp3)
+				elseif c[iter] == "true" then
+					temp4 = -1
+				elseif c[iter] == "false" then
+					temp4 = 0
+				end
+				sf.write(sf, "def " .. temp1 .. " " .. temp4 .. nl)
+			elseif c[iter] == "array" then
+				iter = iter + 1
+				sf.write(sf, "def " .. c[iter] .. " " .. varAddr .. nl)
+				table.insert(vars, c[iter])
+				iter = iter + 1
+				varAddr = varAddr + tonumber(c[iter])
+			elseif isIn(vars, c[iter]) then
+				sf.write(sf, "\tpush " .. c[iter] .. nl)
+			elseif c[iter] == "set" then
+				sf.write(sf, "\tsw" .. nl)
+			elseif c[iter] == "fetch" then
+				sf.write(sf, "\tlw" .. nl)
+			elseif c[iter] == "true" then
+				sf.write(sf, "\tpush -1" .. nl)
+			elseif c[iter] == "false" then
+				sf.write(sf, "\tpush 0" .. nl)
+			elseif c[iter] == "if" then
+				sf.write(sf, "\tjc if" .. ifCount .. nl)
+				sf.write(sf, "\tj else" .. ifCount .. nl)
+				sf.write(sf, nl)
+				sf.write(sf, "deflab if" .. ifCount .. nl)
+				table.insert(ifStack, {ifCount, false})
+				ifCount = ifCount + 1
+			elseif c[iter] == "else" then
+				sf.write(sf, "\tj then" .. ifStack[#ifStack][1] .. nl)
+				sf.write(sf, nl)
+				sf.write(sf, "deflab else" .. ifStack[#ifStack][1] .. nl)
+				ifStack[#ifStack][2] = true
+			elseif c[iter] == "then" then
+				sf.write(sf, nl)
+				if ifStack[#ifStack][2] then
+					sf.write(sf, "deflab then" .. ifStack[#ifStack][1] .. nl)
+				else
+					sf.write(sf, "deflab else" .. ifStack[#ifStack][1] .. nl)
+				end
+				table.remove(ifStack)
+			elseif c[iter] == "while" then
+				sf.write(sf, nl)
+				sf.write(sf, "deflab while" .. whileCount .. nl)
+				table.insert(whileStack, whileCount)
+				whileCount = whileCount + 1
+			elseif c[iter] == "do" then
+				sf.write(sf, "\tjc do" .. whileStack[#whileStack] .. nl)
+				sf.write(sf, "\tj endwhile" .. whileStack[#whileStack] .. nl)
+				sf.write(sf, nl)
+				sf.write(sf, "deflab do" .. whileStack[#whileStack] .. nl)
+			elseif c[iter] == "endwhile" then
+				sf.write(sf, "\tj while" .. whileStack[#whileStack] .. nl)
+				sf.write(sf, nl)
+				sf.write(sf, "deflab endwhile" .. whileStack[#whileStack] .. nl)
+				table.remove(whileStack)
+			elseif c[iter] == "repeat" then
+				sf.write(sf, nl)
+				sf.write(sf, "deflab repeat" .. repeatCount .. nl)
+				table.insert(repeatStack, repeatCount)
+				repeatCount = repeatCount + 1
+			elseif c[iter] == "until" then
+				sf.write(sf, "\tjc repeat" .. repeatStack[#repeatStack] .. nl)
+				table.remove(repeatStack)
+			elseif c[iter] == "loop" then
+				sf.write(sf, "\tover" .. nl)
+				sf.write(sf, "\tadd" .. nl)
+				sf.write(sf, "\titp" .. nl)
+				sf.write(sf, "\titp" .. nl)
+				sf.write(sf, nl)
+				sf.write(sf, "deflab loop" .. forCount .. nl)
+				sf.write(sf, "\tjt for" .. forCount .. nl)
+				table.insert(forStack, forCount)
+				forCount = forCount + 1
+			elseif c[iter] == "for" then
+				sf.write(sf, "\titd" .. nl)
+				sf.write(sf, "\tpush 1" .. nl)
+				sf.write(sf, "\tadd" .. nl)
+				sf.write(sf, "\titp" .. nl)
+				sf.write(sf, "\tj loop" .. forStack[#forStack] .. nl)
+				sf.write(sf, nl)
+				sf.write(sf, "deflab for" .. forStack[#forStack] .. nl)
+				table.remove(forStack)
+			elseif c[iter] == "bye" then
+				sf.write(sf, "\texit" .. nl)
+			elseif c[iter] == "put" then
+				sf.write(sf, "\tpush 0x800000" .. nl)
+				sf.write(sf, "\tswap" .. nl)
+				sf.write(sf, "\tsw" .. nl)
+			elseif c[iter] == "cls" then
+				sf.write(sf, "\tpush 0x800001" .. nl)
+				sf.write(sf, "\tpush 0" .. nl)
+				sf.write(sf, "\tsw" .. nl)
+			elseif c[iter] == "getin" then
+				sf.write(sf, "\tpush 0x800002" .. nl)
+				sf.write(sf, "\tlw" .. nl)
+			elseif c[iter] == "utime" then
+				sf.write(sf, "\tpush 0x800003" .. nl)
+				sf.write(sf, "\tlw" .. nl)
+			elseif c[iter] == "rand" then
+				sf.write(sf, "\tpush 0x800004" .. nl)
+				sf.write(sf, "\tlw" .. nl)
+			elseif c[iter] == "+" then
+				sf.write(sf, "\tadd" .. nl)
+			elseif c[iter] == "-" then
+				sf.write(sf, "\tsub" .. nl)
+			elseif c[iter] == "*" then
+				sf.write(sf, "\tmul" .. nl)
+			elseif c[iter] == "u*" then
+				sf.write(sf, "\tumul" .. nl)
+			elseif c[iter] == "fmul" then
+				sf.write(sf, "\tfmul" .. nl)
+			elseif c[iter] == "/" then
+				sf.write(sf, "\tdiv" .. nl)
+			elseif c[iter] == "u/" then
+				sf.write(sf, "\tudiv" .. nl)
+			elseif c[iter] == "fdiv" then
+				sf.write(sf, "\tfdiv" .. nl)
+			elseif c[iter] == "%" then
+				sf.write(sf, "\tmod" .. nl)
+			elseif c[iter] == "&" then
+				sf.write(sf, "\tand" .. nl)
+			elseif c[iter] == "|" then
+				sf.write(sf, "\tot" .. nl)
+			elseif c[iter] == "~" then
+				sf.write(sf, "\txor" .. nl)
+			elseif c[iter] == "!" then
+				sf.write(sf, "\tdup" .. nl)
+				sf.write(sf, "\tnor" .. nl)
+			elseif c[iter] == "<<" then
+				sf.write(sf, "\tsll" .. nl)
+			elseif c[iter] == ">>" then
+				sf.write(sf, "\tsra" .. nl)
+			elseif c[iter] == ">>>" then
+				sf.write(sf, "\tsrl" .. nl)
+			elseif c[iter] == "=" then
+				sf.write(sf, "\teq" .. nl)
+			elseif c[iter] == "~=" then
+				sf.write(sf, "\tne" .. nl)
+			elseif c[iter] == ">" then
+				sf.write(sf, "\tgt" .. nl)
+			elseif c[iter] == ">=" then
+				sf.write(sf, "\tge" .. nl)
+			elseif c[iter] == "<" then
+				sf.write(sf, "\tlt" .. nl)
+			elseif c[iter] == "<=" then
+				sf.write(sf, "\tle" .. nl)
+			elseif c[iter] == ">" then
+				sf.write(sf, "\tugt" .. nl)
+			elseif c[iter] == ">=" then
+				sf.write(sf, "\tuge" .. nl)
+			elseif c[iter] == "<" then
+				sf.write(sf, "\tult" .. nl)
+			elseif c[iter] == "<=" then
+				sf.write(sf, "\tule" .. nl)
+			elseif c[iter] == "dup" then
+				sf.write(sf, "\tdup" .. nl)
+			elseif c[iter] == "over" then
+				sf.write(sf, "\tover" .. nl)
+			elseif c[iter] == "tuck" then
+				sf.write(sf, "\ttuck" .. nl)
+			elseif c[iter] == "drop" then
+				sf.write(sf, "\tdrop" .. nl)
+			elseif c[iter] == "nip" then
+				sf.write(sf, "\tnip" .. nl)
+			elseif c[iter] == "swap" then
+				sf.write(sf, "\tswap" .. nl)
+			elseif c[iter] == "rot" then
+				sf.write(sf, "\trot" .. nl)
+			elseif c[iter] == "crot" then
+				sf.write(sf, "\tcrot" .. nl)
+			elseif c[iter] == ">i" then
+				sf.write(sf, "\titp" .. nl)
+			elseif c[iter] == "i@" then
+				sf.write(sf, "\titc" .. nl)
+			elseif c[iter] == "i>" then
+				sf.write(sf, "\titd" .. nl)
+			end
+		end
+		iter = iter + 1
+	end
+	io.close(sf)
+end
+
+-- Some random variables.
 argv = {...}
 pit = 1
-prg_file = ""
-sav_file = ""
-if #argv == 0 or argv[1] == "--help" then
-	diserror("Usage:\n./fsc.lua [params]\n--help - this message.\n--version - display version.\n-i - input file.\n-o - output file.")
-end
+prgFile = ""
+savFile = ""
+temp0 = ""
+files = {}
 
+-- This code was taken from fsm.lua
 while pit <= #argv do
 	if argv[pit] == "--version" then
-		diserror("FurStack version 0.2.2")
+		print("FurStack version 0.3.1")
+		os.exit()
+	elseif argv[pit] == "--help" then
+		print("FurStack Compiler usage:\n./fsc.lua [options]")
+		print("Options:\n--version - display version.\n--help - display this message.\n-i - input file.\n-o - output file.")
+		os.exit()
 	elseif argv[pit] == "-i" then
-		if prg_file == "" then
-			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-o" then
-				prg_file = argv[pit + 1]
-				pit = pit + 1
-			else
-				diserror("Error! Input file not given.")
-			end
+		if prgFile ~= "" then
+			disError("You already defined input file.")
+		elseif argv[pit + 1] ~= nil and string.match(argv[pit + 1], "[/%w_%.]*[%w_]+%.fu") then
+			prgFile = argv[pit + 1]
+			pit = pit + 1
 		else
-			diserror("Error! There can be only one file given to assemble.")
+			disError("Invalid parameter given.")
 		end
 	elseif argv[pit] == "-o" then
-		if sav_file == "" then
-			if argv[pit + 1] ~= nil and argv[pit + 1] ~= "-i" then
-				sav_file = argv[pit + 1]
-				pit = pit + 1
-			else
-				diserror("Error! Output file not given.")
-			end
+		if savFile ~= "" then
+			disError("You already defined output file.")
+		elseif argv[pit + 1] ~= nil and string.match(argv[pit + 1], "[/%w_%.]*[%w_]+%.s") then
+			savFile = argv[pit + 1]
+			pit = pit + 1
 		else
-			diserror("Error! Output file is already given.")
+			disError("Invalid parameter given.")
 		end
 	else
-		diserror("Error! Unknown parameter.")
+		disError("Invalid option.")
 	end
 	pit = pit + 1
 end
 
-if prg_file == "" then
-	diserror("Error! No file given.")
-elseif sav_file == "" then
-	sav_file = string.gsub(prg_file, "%.fu", "%.s")
+if prgFile == "" then
+	disError("Input file not given.")
+elseif savFile == "" then
+	temp0 = string.sub(prgFile, 1, -3)
+	savFile = temp0 .. "s"
 end
 
-if not string.match(prg_file, ".+%.fu") then
-	compileError("Error! The input file is not a FurStack program.")
-end
+table.insert(files, prgFile)
 
--- Reading program.
-prg = io.open(prg_file, "r")
+-- Opening file.
+prg = io.open(prgFile, "r")
 if prg == nil then
-	compileError("Error! File doesn't exist.")
+	disError("File doesn't exists.")
 end
-content = prg.read(prg, "*all")
+code = prg.read(prg, "*all")
 io.close(prg)
 
--- The reason those are global, is include keyword.
-vars = {}
-fns = {}
-included = {prg_file}
--- The start of this madness.
-words = parse(content, prg_file)
+-- Compiling this mess.
+splited, lns, mac = tokenize(code, prgFile)
 
-it = 1
-stackCond = {}
-countCond = 0
-stackLoop = {}
-countLoop = 0
-stackRep = {}
-countRep = 0
-var = {}
-var_addr = 0
-temp1 = ""
-temp2 = {}
--- Does it compiles to x86? No.
--- Does it compile to arm? No.
--- Does it compile to risc-v? No.
--- Does it compile to anything real? No. It compiles to shitty assembly for FurStack Virtual Machine.
-compiled = {
-	"cal main\n",
-	"exit\n"
-}
+toComp, func, var = errorCheck(splited, lns, prgFile)
 
--- This is the second longest part og the program. The first one is the parse function.
--- The compiled code will probably not be that far behind assembly code written by human. The VM is a stack machine.
--- Yes, you can program FurStack Virtual Machine in assembly.
-while it <= #words do
-	-- Numbers, string and variables.
-	if tonumber(words[it]) or var[words[it]] then
-		table.insert(compiled, "push " .. words[it] .. "\n")
-	elseif string.match(words[it], "\".*\"") then
-		temp1 = string.sub(words[it], 2, -2)
-		for p, c in utf8.codes(temp1) do
-			table.insert(temp2, "push " .. c .. "\n")
-		end
-		for i = 1, #temp2, 1 do
-			table.insert(compiled, temp2[#temp2 - i + 1])
-		end
-		temp2 = {}
-	-- Keywords.
-	-- Yes, comments are also written into the compiled program.
-	-- No. I'm not getting rid of it. Fuck you.
-	elseif words[it] == "rem" then
-		temp1 = words[it]
-		it = it + 1
-		while words[it] ~= "endrem" do
-			temp1 = temp1 .. " " .. words[it]
-			it = it + 1
-		end
-		table.insert(compiled, temp1 .. "\n")
-	elseif words[it] == "fn" then
-		table.insert(compiled, "deflab " .. words[it + 1] .. "\n")
-		it = it + 1
-	elseif words[it] == "endfn" then
-		table.insert(compiled, "ret\n")
-	elseif words[it] == "let" then
-		var[words[it + 2]] = var_addr
-		table.insert(compiled, "def " .. words[it + 2] .. " " .. var_addr .. "\n")
-		var_addr = var_addr + 1
-		it = it + 2
-	elseif words[it] == "const" then
-		var[words[it + 2]] = -1
-		if words[it + 1] == "int" or words[it + 1] == "fixed" then
-			table.insert(compiled, "def " .. words[it + 2] .. " " .. words[it + 3] .. "\n")
-		elseif words[it + 1] == "char" then
-			temp1 = string.sub(words[it + 3], 2, 2)
-			table.insert(compiled, "def " .. words[it + 2] .. " " .. utf8.codepoint(temp1) .. "\n")
-		elseif words[it + 1] == "bool" then
-			if words[it + 3] == "true" then
-				table.insert(compiled, "def " .. words[it + 2] .. " -1\n")
-			else
-				table.insert(compiled, "def " .. words[it + 2] .. " 0\n")
-			end
-		end
-		it = it + 3
-	elseif words[it] == "array" then
-		var[words[it + 2]] = var_addr
-		table.insert(compiled, "def " .. words[it + 2] .. " " .. var_addr .. "\n")
-		var_addr = var_addr + tonumber(words[it + 3])
-		it = it + 3
-	elseif words[it] == "set" then
-		table.insert(compiled, "sw\n")
-	elseif words[it] == "fetch" then
-		table.insert(compiled, "lw\n")
-	elseif words[it] == "true" then
-		table.insert(compiled, "push -1\n")
-	elseif words[it] == "false" then
-		table.insert(compiled, "push 0\n")
-	elseif words[it] == "utime" then
-		table.insert(compiled, "push 0x8003\n")
-		table.insert(compiled, "lw\n")
-	elseif words[it] == "if" then
-		countCond = countCond + 1
-		table.insert(stackCond, {countCond, false})
-		table.insert(compiled, "jc if" .. countCond .. "\n")
-		table.insert(compiled, "j else" .. countCond .. "\n")
-		table.insert(compiled, "deflab if" .. countCond .. "\n")
-	elseif words[it] == "else" then
-		stackCond[#stackCond][2] = true
-		table.insert(compiled, "j then" .. stackCond[#stackCond][1] .. "\n")
-		table.insert(compiled, "deflab else" .. stackCond[#stackCond][1] .. "\n")
-	elseif words[it] == "then" then
-		if stackCond[#stackCond][2] then
-			table.insert(compiled, "deflab then" .. stackCond[#stackCond][1] .. "\n")
-		else
-			table.insert(compiled, "deflab else" .. stackCond[#stackCond][1] .. "\n")
-		end
-		table.remove(stackCond)
-	elseif words[it] == "while" then
-		countLoop = countLoop + 1
-		table.insert(stackLoop, countLoop)
-		table.insert(compiled, "deflab while" .. countLoop .. "\n")
-	elseif words[it] == "do" then
-		table.insert(compiled, "jc do" .. stackLoop[#stackLoop] .. "\n")
-		table.insert(compiled, "j endwhile" .. stackLoop[#stackLoop] .. "\n")
-		table.insert(compiled, "deflab do" .. stackLoop[#stackLoop] .. "\n")
-	elseif words[it] == "endwhile" then
-		table.insert(compiled, "j while" .. stackLoop[#stackLoop] .. "\n")
-		table.insert(compiled, "deflab endwhile" .. stackLoop[#stackLoop] .. "\n")
-		table.remove(stackLoop)
-	elseif words[it] == "repeat" then
-		countRep = countRep + 1
-		table.insert(stackRep, countRep)
-		table.insert(compiled, "deflab repeat" .. countRep .. "\n")
-	elseif words[it] == "until" then
-		table.insert(compiled, "deflab until" .. stackRep[#stackRep] .. "\n")
-		table.insert(compiled, "jc repeat" .. stackRep[#stackRep] .. "\n")
-	-- There used to be gofn. Now it's just function name.
-	elseif contains(fns, words[it]) then
-		table.insert(compiled, "cal " .. words[it] .. "\n")
-	elseif words[it] == "bye" then
-		table.insert(compiled, "exit\n")
-	elseif words[it] == "put" then
-		table.insert(compiled, "por reg0\n")
-		table.insert(compiled, "push 0x8000\n")
-		table.insert(compiled, "pur reg0\n")
-		table.insert(compiled, "sw\n")
-	elseif words[it] == "cls" then
-		table.insert(compiled, "push 0x8001\n")
-		table.insert(compiled, "push 0\n")
-		table.insert(compiled, "sw\n")
-	elseif words[it] == "getin" then
-		table.insert(compiled, "push 0x8002\n")
-		table.insert(compiled, "lw\n")
-	-- Operators.
-	elseif words[it] == "+" then
-		table.insert(compiled, "add\n")
-	elseif words[it] == "-" then
-		table.insert(compiled, "sub\n")
-	elseif words[it] == "*" then
-		table.insert(compiled, "mul\n")
-	elseif words[it] == "fmul" then
-		table.insert(compiled, "fmul\n")
-	elseif words[it] == "/" then
-		table.insert(compiled, "div\n")
-	elseif words[it] == "fdiv" then
-		table.insert(compiled, "fdiv\n")
-	elseif words[it] == "%" then
-		table.insert(compiled, "mod\n")
-	elseif words[it] == "&" then
-		table.insert(compiled, "and\n")
-	elseif words[it] == "|" then
-		table.insert(compiled, "or\n")
-	elseif words[it] == "~" then
-		table.insert(compiled, "xor\n")
-	elseif words[it] == "!" then
-		table.insert(compiled, "dup\n")
-		table.insert(compiled, "nor\n")
-	elseif words[it] == "<<" then
-		table.insert(compiled, "sll\n")
-	elseif words[it] == ">>" then
-		table.insert(compiled, "sra\n")
-	elseif words[it] == ">>>" then
-		table.insert(compiled, "srl\n")
-	elseif words[it] == "=" then
-		table.insert(compiled, "eq\n")
-	elseif words[it] == "~=" then
-		table.insert(compiled, "ne\n")
-	elseif words[it] == ">" then
-		table.insert(compiled, "gt\n")
-	elseif words[it] == ">=" then
-		table.insert(compiled, "ge\n")
-	elseif words[it] == "<" then
-		table.insert(compiled, "lt\n")
-	elseif words[it] == "<=" then
-		table.insert(compiled, "le\n")
-	elseif words[it] == "dup" then
-		table.insert(compiled, "dup\n")
-	elseif words[it] == "over" then
-		table.insert(compiled, "over\n")
-	elseif words[it] == "swap" then
-		table.insert(compiled, "por reg0\n")
-		table.insert(compiled, "por reg1\n")
-		table.insert(compiled, "pur reg0\n")
-		table.insert(compiled, "pur reg1\n")
-	elseif words[it] == "rot" then
-		table.insert(compiled, "por reg0\n")
-		table.insert(compiled, "por reg1\n")
-		table.insert(compiled, "por reg2\n")
-		table.insert(compiled, "pur reg1\n")
-		table.insert(compiled, "pur reg0\n")
-		table.insert(compiled, "pur reg2\n")
-	elseif words[it] == "drop" then
-		table.insert(compiled, "drop\n")
-	end
-	it = it + 1
-end
-
--- Compiled. Now it can be saved.
-asm = io.open(sav_file, "w")
-for i = 1, #compiled, 1 do
-	asm.write(asm, compiled[i])
-end
-io.close(asm)
+compile(toComp, "fsvm", savFile, mac)

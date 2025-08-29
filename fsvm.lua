@@ -1,31 +1,22 @@
 #!/usr/bin/env lua
--- Nocurses, my beloved.
--- Note that nocurses works on Linux, Mac and Cygwin.
+-- Nocurses my beloved.
 local nocurses = require("nocurses")
 
--- Le error.
-function runtime_error(m)
+function runtimeError(m)
 	io.write("\27[?1049l")
 	print("\27[91m" .. m .. "\27[0m")
 	os.exit(1)
 end
 
--- This takes the program and converts it to array full of numbers.
 function convert(s)
 	local t = {}
-	local w = ""
 	for i in string.gmatch(s, "(.)") do
-		if i == "\n" or i == " " and w ~= "" and tonumber(w, 16) then
-			table.insert(t, tonumber(w, 16))
-			w = ""
-		else
-			w = w .. i
-		end
+		table.insert(t, string.byte(i))
 	end
 	return t
 end
 
--- Lua interprets one byte as character. There are probably better ways to do it, but whatever.
+-- Because lua interprets one char as 1 byte, this can cause some problems.
 function lastCharSize(s)
 	local l = 0
 	for p, _ in utf8.codes(s) do
@@ -34,331 +25,343 @@ function lastCharSize(s)
 	return #s - l + 1
 end
 
--- Reading program.
-argv = {...}
-debug_mode = false
--- Alternative terminal buffer, because why not.
-io.write("\27[?1049h")
-if #argv < 1 then
-	runtime_error("No program given.")
-end
-
-if argv[1] == "--version" then
-	runtime_error("FurStack Virtual Machine version 1.2")
-end
-
--- It's not very useful, believe me.
-if argv[2] ~= nil then
-	if argv[2] == "--debug" then
-		debug_mode = true
+function toSigned(n)
+	if n >= 0x800000 then
+		return n - 0x1000000
+	else
+		return n
 	end
 end
 
-if not string.match(argv[1], ".+%.hex") then
-	compileError("Error! The input file is not a program.")
-end
--- Actually reading the program.
-pf = io.open(argv[1], "r")
-if pf == nil then
-	runtime_error("Error! Program doesn't exist.")
-end
-prg = pf.read(pf, "*all")
-pf.close(pf)
-
-rom = convert(prg)
-
--- Is this a waste of space? Probably.
-for i = 1, 0x100000 - #rom, 1 do
-	table.insert(rom, 0)
-end
-
--- Yes, memory is it's own separate object. I could include rom in it but it's separate.
+-- Memory object.
 mem = {
 	ram = {},
 	term = "",
-	-- This function is self explanatory.
-	write = function(addr, d)
-		if addr >= 0 and addr <= 0x7fff then
-			mem.ram[addr + 1] = d
-		elseif addr == 0x8000 then
-			-- This is probably one of the worst implementations of terminal.
-			if d == 8 then
-				if lastCharSize(mem.term) > 1 then
-					mem.term = string.sub(mem.term, 1, -3)
-				else
-					mem.term = string.sub(mem.term, 1, -2)
-				end
+	-- Init function.
+	init = function()
+		for i = 1, 0x800000 do
+			mem.ram[#mem.ram + 1] = 0
+		end
+	end,
+	-- Read and write functions.
+	write = function(addr, val)
+		if addr < 0x800000 then
+			mem.ram[addr + 1] = val
+		elseif addr == 0x800000 then
+			if val == 8 then
+				mem.term = string.sub(mem.term, 1, -1 - lastCharSize(mem.term))
 				nocurses.clrscr()
 			else
-				mem.term = mem.term .. utf8.char(d)
+				mem.term = mem.term .. utf8.char(val)
 				nocurses.gotoxy(1, 1)
 			end
 			print(mem.term)
-		elseif addr == 0x8001 then
+		elseif addr == 0x800001 then
 			mem.term = ""
 			nocurses.clrscr()
 		end
 	end,
-	-- Same as above.
 	read = function(addr)
 		local d = 0
 		local temp = ""
-		if addr >= 0 and addr <= 0x7fff then
+		-- VM keyboard uses 10(line feed) as new line character. Keep that in mind when using on Mac or Windows.
+		local conv = {
+			Up = 0x1b5b41,
+			Down = 0x1b5b42,
+			Left = 0x1b5b43,
+			Right = 0x1b5b44,
+			End = 0x1b5b46,
+			Home = 0x1b5b48,
+			F1 = 0x1b4f50,
+			F2 = 0x1b4f51,
+			F3 = 0x1b4f52,
+			F4 = 0x1b4f53,
+			Enter = 0xa,
+			Tab = 0x9,
+			Backspace = 0x8
+		}
+		if addr < 0x800000 then
 			d = mem.ram[addr + 1]
-		elseif addr == 0x8002 then
-			-- This is the main reason for nocurses being used.
+		elseif addr == 0x800002 then
 			temp = nocurses.getkey(0.05)
-			-- There is getch in no curses, but it requires fucking with it to achieve what I want.
-			-- Something will probably break anyways.
-			if temp ~= false and temp ~= nil then
-				-- haha, fucking up Windows and MacOS users up go brrrr.
-				if temp == "Enter" then
-					d = 10
-				elseif temp == "Tab" then
-					d = 9
-				elseif temp == "Backspace" then
-					d = 8
-				elseif temp == "Escape" then
-					d = 27
-				elseif temp == "Space" then
-					d = 32
-				elseif temp == "Delete" then
-					d = 127
-				else
-					d = utf8.codepoint(temp)
-				end
+			if conv[temp] then
+				d = conv[temp]
+			elseif temp ~= nil then
+				d = utf8.codepoint(temp)
 			else
 				d = 0
 			end
-		elseif addr == 0x8003 then
-			d = os.time() & 0xffff
+		elseif addr == 0x800003 then
+			d = os.time()
+		elseif addr == 0x800004 then
+			d = math.random(0, 0xffffff)
 		end
 		return d
 	end
 }
 
--- Could I done it in mem object? Yes.
--- Will I do it? idk.
-for i = 1, 0x8000, 1 do
-	table.insert(mem.ram, 0)
-end
-
--- The cpu. :3
+-- The cpu itself.
 cpu = {
 	running = true,
-	-- The first stack is the actual stack on which you do shit.
-	-- The second one is for return addresses stored in cal instruction(opcode 13)
 	stack = {},
-	ret_stack = {},
-	-- The only reason I added those is lack of instruction to implement swap and rotate.
-	regs = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	retStack = {},
+	iterStack = {},
 	pc = 0,
-	-- Push and pop functions. I could just use table.insert and table.remove, but I wanted some error detection.
-	push = function(s, v)
+	-- Push and pop functions.
+	push = function(o, s, v, l)
 		table.insert(s, v)
-		if #s > 4096 then
-			runtime_error("Error! Stack overflow. PC: " .. cpu.pc)
+		if #s > l then
+			runtimeError("Stack overflow.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", o))
 		end
 	end,
-	pop = function(s)
-		local v = 0
+	pop = function(o, s)
+		local temp = 0
 		if #s == 0 then
-			runtime_error("Error! Stack underflow. PC: " .. cpu.pc)
-		else
-			local v = s[#s]
-			table.remove(s)
-			return v
+			runtimeError("Stack underflow.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", o))
 		end
+		temp = s[#s]
+		table.remove(s)
+		return temp
 	end,
-	-- The single clock cycle.
+	-- The part where the magic happens.
 	cycle = function(p, m)
 		local instr = 0
-		local op = 0
-		local f = 0
+		local fn = 0
 		local imm = 0
-		local jaddr = 0
+		local addr = 0
 		local a = 0
 		local b = 0
-		local r = 0
-		
-		-- Fetch and decode.
-		instr = p[cpu.pc + 1]
-		op = instr >> 4
-		f = instr & 0xf
-		-- Most instruction take one byte of memory, but these take more.
-		if op == 2 or op == 11 or op == 12 or op == 13 then
-			instr = instr << 8
-			instr = instr + p[cpu.pc + 2]
-			instr = instr << 8
-			instr = instr + p[cpu.pc + 3]
-			imm = instr & 0xffff
-			jaddr = instr & 0xfffff
+		local c = 0
+		if p[cpu.pc + 1] == nil then
+			runtimeError("Program counter out of range.")
+		else
+			instr = p[cpu.pc + 1] >> 4
+			fn = p[cpu.pc + 1] & 0xf
+			if instr == 2 or instr >= 10 and instr <= 13 then
+				if p[cpu.pc + 2] == nil or p[cpu.pc + 3] == nil or p[cpu.pc + 4] == nil then
+					runtimeError("Missing parameter.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", p[cpu.pc + 1]))
+				else
+					addr = (fn << 24) + (p[cpu.pc + 2] << 16) + (p[cpu.pc + 3] << 8) + p[cpu.pc + 4]
+					imm = addr & 0xffffff
+				end
+			end
+			-- Noop.
+			if instr == 0 then
+				goto noop
+			-- Arithmetic and logic operation.
+			elseif instr == 1 then
+				b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				if fn == 0 then
+					a = (toSigned(a) + toSigned(b)) & 0xffffff
+				elseif fn == 1 then
+					a = (toSigned(a) - toSigned(b)) & 0xffffff
+				elseif fn == 2 then
+					a = (toSigned(a) * toSigned(b)) & 0xffffff
+				elseif fn == 3 then
+					a = (a * b) & 0xffffff
+				elseif fn == 4 then
+					a = ((toSigned(a) * toSigned(b)) >> 12) & 0xffffff
+				elseif fn == 5 then
+					a = (toSigned(a) // toSigned(b)) & 0xffffff
+				elseif fn == 6 then
+					a = (a // b) & 0xffffff
+				elseif fn == 7 then
+					a = ((toSigned(a) << 12) // toSigned(b)) & 0xffffff
+				elseif fn == 8 then
+					a = toSigned(a) % toSigned(b)
+				elseif fn == 9 then
+					a = a & b
+				elseif fn == 10 then
+					a = a | b
+				elseif fn == 11 then
+					a = a ~ b
+				elseif fn == 12 then
+					a = ~(a | b)
+				elseif fn == 13 then
+					a = (a << b) & 0xffffff
+				elseif fn == 14 then
+					a = a >> b
+				elseif fn == 15 then
+					a = (toSigned(a) >> b) & 0xffffff
+				end
+				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+			-- Push.
+			elseif instr == 2 then
+				cpu.push(p[cpu.pc + 1], cpu.stack, imm, 0x40000)
+				cpu.pc = cpu.pc + 3
+			-- Stack operations.
+			elseif instr == 3 then
+				if fn == 0 then
+					cpu.pop(p[cpu.pc + 1], cpu.stack)
+				elseif fn == 1 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+				elseif fn == 2 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+				elseif fn == 3 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+				elseif fn == 4 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+				elseif fn == 5 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+				elseif fn == 6 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					c = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, c, 0x40000)
+				elseif fn == 7 then
+					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					c = cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, c, 0x40000)
+					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+				end
+			-- Store.
+			elseif instr == 4 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				m.write(b, a)
+			-- Load.
+			elseif instr == 5 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				a = m.read(a)
+				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+			-- Push to iteration stack.
+			elseif instr == 6 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				cpu.push(p[cpu.pc + 1], cpu.iterStack, a, 0x100)
+			-- Copy from iteration stack.
+			elseif instr == 7 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
+				cpu.push(p[cpu.pc + 1], cpu.iterStack, a, 0x100)
+				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+			-- Drop from iteration stack.
+			elseif instr == 8 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
+				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+			-- Comparison.
+			elseif instr == 9 then
+				b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				if fn == 0 then
+					c = a == b
+				elseif fn == 1 then
+					c = a ~= b
+				elseif fn == 2 then
+					c = toSigned(a) > toSigned(b)
+				elseif fn == 3 then
+					c = toSigned(a) < toSigned(b)
+				elseif fn == 4 then
+					c = toSigned(a) >= toSigned(b)
+				elseif fn == 5 then
+					c = toSigned(a) <= toSigned(b)
+				elseif fn == 6 then
+					c = a > b
+				elseif fn == 7 then
+					c = a < b
+				elseif fn == 8 then
+					c = a >= b
+				elseif fn == 9 then
+					c = a <= b
+				end
+				if c then
+					cpu.push(p[cpu.pc + 1], cpu.stack, 0xffffff, 0x40000)
+				else
+					cpu.push(p[cpu.pc + 1], cpu.stack, 0, 0x40000)
+				end
+			-- Jump.
+			elseif instr == 10 then
+				cpu.pc = addr - 1
+			-- Conditional jump.
+			elseif instr == 11 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				if a ~= 0 then
+					cpu.pc = addr - 1
+				else
+					cpu.pc = cpu.pc + 3
+				end
+			-- Iterator jump.
+			elseif instr == 12 then
+				a = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
+				b = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
+				if a == b then
+					cpu.pc = addr - 1
+				else
+					cpu.push(p[cpu.pc + 1], cpu.iterStack, b, 0x100)
+					cpu.push(p[cpu.pc + 1], cpu.iterStack, a, 0x100)
+					cpu.pc = cpu.pc + 3
+				end
+			-- Call.
+			elseif instr == 13 then
+				cpu.pc = cpu.pc + 3
+				cpu.push(p[cpu.pc + 1], cpu.retStack, cpu.pc, 0x40000)
+				cpu.pc = addr - 1
+			-- Return.
+			elseif instr == 14 then
+				cpu.pc = cpu.pop(p[cpu.pc + 1], cpu.retStack)
+			-- End this mess.
+			elseif instr == 15 then
+				cpu.running = false
+			end
+			::noop::
+			cpu.pc = (cpu.pc + 1) & 0xfffffff
 		end
-
-		-- Execute.
-		-- Do absolute nothing.
-		if op == 0 then
-			-- People will probably look at me like at some war criminal for using goto.
-			goto noop
-		-- Math instruction.
-		elseif op == 1 then
-			b = cpu.pop(cpu.stack)
-			a = cpu.pop(cpu.stack)
-			-- Numbers on stack are stored in unsigned form and it needs to be converted for some instructions.
-			if f < 9 and f ~= 3 and f ~= 5 then
-				if a >> 15 == 1 then
-					a = a - 0x10000
-				end
-				if b >> 15 == 1 then
-					b = b - 0x10000
-				end
-			end
-			if f == 0 then
-				r = (a + b) & 0xffff
-			elseif f == 1 then
-				r = (a - b) & 0xffff
-			elseif f == 2 or f == 3 then
-				r = (a * b) & 0xffff
-			elseif f == 4 or f == 5 then
-				r = (a // b) & 0xffff
-			elseif f == 6 then
-				r = a % b
-			-- Two fixed point math instructions. Only multiplication and division.
-			-- The format of fixed point numbers is 00000000.00000000
-			elseif f == 7 then
-				r = ((a * b) >> 8) & 0xffff
-			elseif f == 8 then
-				r = ((a << 8) // b) & 0xffff
-			-- Note that you need lua 5.3 for this to work.
-			elseif f == 9 then
-				r = a & b
-			elseif f == 10 then
-				r = a | b
-			elseif f == 11 then
-				r = a ~ b
-			elseif f == 12 then
-				r = ~(a | b) & 0xffff
-			elseif f == 13 then
-				r = (a << b) & 0xffff
-			elseif f == 14 then
-				r = a >> b
-			elseif f == 15 then
-				if a >> 15 == 1 then
-					a = a - 0x10000
-				end
-				r = (a >> b) & 0xffff
-			end
-			cpu.push(cpu.stack, r)
-		-- Push.
-		elseif op == 2 then
-			cpu.push(cpu.stack, imm)
-			cpu.pc = cpu.pc + 2
-		-- Pop.
-		elseif op == 3 then
-			-- That value is send to Brazil, aka is getting discarded.
-			cpu.pop(cpu.stack)
-		-- Push from register.
-		elseif op == 4 then
-			cpu.push(cpu.stack, cpu.regs[f + 1])
-		-- Pop to register.
-		elseif op == 5 then
-			cpu.regs[f + 1] = cpu.pop(cpu.stack)
-		-- Store.
-		elseif op == 6 then
-			b = cpu.pop(cpu.stack)
-			a = cpu.pop(cpu.stack)
-			m.write(a, b)
-		-- Load.
-		elseif op == 7 then
-			a = cpu.pop(cpu.stack)
-			r = m.read(a)
-			cpu.push(cpu.stack, r)
-		-- Duplicate top stack value.
-		elseif op == 8 then
-			a = cpu.stack[#cpu.stack]
-			cpu.push(cpu.stack, a)
-		-- Same as above, but with the value below.
-		elseif op == 9  then
-			a = cpu.stack[#cpu.stack - 1]
-			cpu.push(cpu.stack, a)
-		-- Comparison instruction.
-		elseif op == 10 then
-			b = cpu.pop(cpu.stack)
-			a = cpu.pop(cpu.stack)
-			-- Same as in math instruction.
-			if f < 6 then
-				if a >> 15 == 1 then
-					a = a - 0x10000
-				end
-				if b >> 15 == 1 then
-					b = b - 0x10000
-				end
-			end
-			if f == 0 then
-				r = a == b
-			elseif f == 1 then
-				r = a ~= b
-			elseif f == 2 or f == 6 then
-				r = a > b
-			elseif f == 3 then
-				r = a >= b
-			elseif f == 4 or f == 7 then
-				r = a < b
-			elseif f == 5 then
-				r = a <= b
-			end
-			if r then
-				-- This could be anything.
-				cpu.push(cpu.stack, 0xffff)
-			else
-				cpu.push(cpu.stack, 0)
-			end
-		-- Jump.
-		elseif op == 11 then
-			cpu.pc = jaddr - 1
-		-- Conditiona jump.
-		elseif op == 12 then
-			a = cpu.pop(cpu.stack)
-			if a ~= 0 then
-				cpu.pc = jaddr - 1
-			else
-				cpu.pc = cpu.pc + 2
-			end
-		-- Call.
-		elseif op == 13 then
-			cpu.push(cpu.ret_stack, cpu.pc + 3)
-			cpu.pc = jaddr - 1
-		-- Return.
-		elseif op == 14 then
-			cpu.pc = cpu.pop(cpu.ret_stack)
-			cpu.pc = cpu.pc - 1
-		-- Exit.
-		elseif op == 15 then
-			cpu.running = false
-		end
-		::noop::
-		-- Increment PC by 1 and make sure it can fit in 20 bits.
-		cpu.pc = (cpu.pc + 1) & 0xfffff
 	end
 }
 
--- The main loop.
+-- Reading an argument.
+argv = {...}
+if argv[1] == "--version" then
+	print("FurStack Virtual Machine version 2\nCompatible with FurStack 0.3")
+	os.exit()
+elseif argv[1] == "--help" then
+	print("FurStack Virtual Machine usage:\n./fsvm.lua [option] program")
+	print("Options:\n--version - show version.\n--help - display this message.")
+	os.exit()
+end
+
+-- Switching to alternative terminal buffer.
+io.write("\27[?1049h")
+if #argv == 0 then
+	runtimeError("No program given.")
+elseif not string.match(argv[1], "[/%w_%.]*[%w_]+%.hex") then
+	runtimeError("Invalid program file.")
+end
+
+-- Reading program.
+prg = io.open(argv[1], "r")
+if prg == nil then
+	runtimeError("File doesn't exists.")
+end
+code = prg.read(prg, "*all")
+io.close(prg)
+
+-- Executing it.
+rom = convert(code)
+mem.init()
 while cpu.running do
 	cpu.cycle(rom, mem)
 end
 
--- I did that only to see results.
+-- End of program.
 print("Press key to exit:")
 nocurses.getkey()
 io.write("\27[?1049l")
-
--- This prints first 4096 ram addresses. Not very useful.
-if debug_mode then
-	for i = 1, 0x100, 1 do
-		io.write(string.format("%x", (i - 1) << 4))
-		for j = 1, 0x10, 1 do
-			io.write("\t" .. string.format("%x", mem.ram[((i - 1) << 4) + j]))
-		end
-		io.write("\n")
-	end
-end
