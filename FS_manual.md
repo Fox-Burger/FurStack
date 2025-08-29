@@ -92,6 +92,7 @@ to counter this problem.
 Word utime gets the 24 bits of current time in seconds of unix time and pushes it into the stack.
 Word rand pushes random number between 0 and 16777215 into the stack.
 Those are all the words related to I/O of FurStack virtual machine. Now lets take a look at variables.
+
 ---
 
 ## 3. Variables and constants
@@ -246,7 +247,7 @@ fn main
 	bye
 endfn
 ```
->i pops top stack value and pushes it to iteration stack. i@ copies the top value of iteration stack. i> pop top value from iteration stack and pushes it to
+`>i` pops top stack value and pushes it to iteration stack. i@ copies the top value of iteration stack. `i>` pop top value from iteration stack and pushes it to
 the stack. That's all the operations in this chapter. It's quite long. Now let's talk about other things.
 
 ---
@@ -526,26 +527,26 @@ Words:
 26. getin
 27. utime
 28. rand
-29. +
-30. -
-31. *
-32. u*
+29. `+`
+30. `-`
+31. `*`
+32. `u*`
 34. fmul
 35. /
 36. u/
 37. fdiv
 38. %
 39. &
-40. |
+40. `|`
 41. ~
 42. !
 43. <<
-44. >>
-45. >>>
+44. `>>`
+45. `>>>`
 46. =
 47. ~=
-48. >
-49. >=
+48. `>`
+49. `>=`
 50. <
 51. <=
 52. u>
@@ -560,7 +561,7 @@ Words:
 61. tuck
 62. nip
 63. crot
-64. >i
+64. `>i`
 65. i@
 66. i>
 
