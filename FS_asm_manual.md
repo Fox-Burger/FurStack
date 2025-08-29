@@ -197,10 +197,17 @@ Stop the execution of the program.
 
 ## 4. Additional stuff
 Memory map:
+
 0x000000-0x7fffff - Random Access Memory.
+
 0x800000 - Terminal.
+
 0x800001 - Clear Terminal.
+
 0x800002 - Keyboard.
+
 0x800003 - Time.
+
 0x800004 - Random number.
+
 0x800005-0xffffff - unused.
