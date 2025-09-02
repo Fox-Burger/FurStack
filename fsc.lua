@@ -185,8 +185,8 @@ function errorCheck(t, l, f)
 					table.insert(vars, t[iter])
 					table.insert(tab, t[iter])
 					iter = iter + 1
-					if (tonumber(t[iter]) and string.match(t[iter], "-?(0[bodx])?%x+") and isValNum(tonumber(t[iter]), -0x800000, 0xffffff)) or
-					(tonumber(t[iter]) and string.match(t[iter], "-?(0[bodx])?%x*%.%x+") and isValNum(tonumber(t[iter]), -0x800.000, 0xfff.fff)) or
+					if math.type(tonumber(t[iter])) == "integer" and isValNum(tonumber(t[iter]), -0x800000, 0xffffff) or
+					math.type(tonumber(t[iter])) == "float" and isValNum(tonumber(t[iter]), -0x800.000, 0xfff.fff) or
 					string.match(t[iter], "\".\"") or t[iter] == "true" or t[iter] == "false" then
 						table.insert(tab, t[iter])
 					else
@@ -487,7 +487,7 @@ function compile(c, t, s, m)
 			elseif c[iter] == "&" then
 				sf.write(sf, "\tand" .. nl)
 			elseif c[iter] == "|" then
-				sf.write(sf, "\tot" .. nl)
+				sf.write(sf, "\tor" .. nl)
 			elseif c[iter] == "~" then
 				sf.write(sf, "\txor" .. nl)
 			elseif c[iter] == "!" then

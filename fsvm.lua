@@ -11,7 +11,7 @@ end
 function convert(s)
 	local t = {}
 	for i in string.gmatch(s, "(.)") do
-		table.insert(t, string.byte(i))
+		t[#t + 1] =  string.byte(i)
 	end
 	return t
 end
@@ -107,21 +107,13 @@ cpu = {
 	retStack = {},
 	iterStack = {},
 	pc = 0,
-	-- Push and pop functions.
-	push = function(o, s, v, l)
-		table.insert(s, v)
-		if #s > l then
+	-- Making sure that everything is ok.
+	validateStackOp = function(o, s, n, r, m)
+		if #s < n then
+			runtimeError("Stack underflow.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", o))
+		elseif #s - n + r > m then
 			runtimeError("Stack overflow.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", o))
 		end
-	end,
-	pop = function(o, s)
-		local temp = 0
-		if #s == 0 then
-			runtimeError("Stack underflow.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", o))
-		end
-		temp = s[#s]
-		table.remove(s)
-		return temp
 	end,
 	-- The part where the magic happens.
 	cycle = function(p, m)
@@ -131,7 +123,6 @@ cpu = {
 		local addr = 0
 		local a = 0
 		local b = 0
-		local c = 0
 		if p[cpu.pc + 1] == nil then
 			runtimeError("Program counter out of range.")
 		else
@@ -150,173 +141,175 @@ cpu = {
 				goto noop
 			-- Arithmetic and logic operation.
 			elseif instr == 1 then
-				b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 1, 0x40000)
+				a = cpu.stack[#cpu.stack]
+				cpu.stack[#cpu.stack] = nil
 				if fn == 0 then
-					a = (toSigned(a) + toSigned(b)) & 0xffffff
+					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) + toSigned(a)) & 0xffffff
 				elseif fn == 1 then
-					a = (toSigned(a) - toSigned(b)) & 0xffffff
+					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) - toSigned(a)) & 0xffffff
 				elseif fn == 2 then
-					a = (toSigned(a) * toSigned(b)) & 0xffffff
+					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) * toSigned(a)) & 0xffffff
 				elseif fn == 3 then
-					a = (a * b) & 0xffffff
+					cpu.stack[#cpu.stack] = (cpu.stack[#cpu.stack] * a) & 0xffffff
 				elseif fn == 4 then
-					a = ((toSigned(a) * toSigned(b)) >> 12) & 0xffffff
+					cpu.stack[#cpu.stack] = ((toSigned(cpu.stack[#cpu.stack]) * toSigned(a)) >> 12) & 0xffffff
 				elseif fn == 5 then
-					a = (toSigned(a) // toSigned(b)) & 0xffffff
+					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) // toSigned(a)) & 0xffffff
 				elseif fn == 6 then
-					a = (a // b) & 0xffffff
+					cpu.stack[#cpu.stack] = (cpu.stack[#cpu.stack] // a) & 0xffffff
 				elseif fn == 7 then
-					a = ((toSigned(a) << 12) // toSigned(b)) & 0xffffff
+					cpu.stack[#cpu.stack] = ((toSigned(cpu.stack[#cpu.stack]) << 12) // toSigned(a)) & 0xffffff
 				elseif fn == 8 then
-					a = toSigned(a) % toSigned(b)
+					cpu.stack[#cpu.stack] = toSigned(cpu.stack[#cpu.stack]) % toSigned(a)
 				elseif fn == 9 then
-					a = a & b
+					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] & a
 				elseif fn == 10 then
-					a = a | b
+					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] | a
 				elseif fn == 11 then
-					a = a ~ b
+					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] ~ a
 				elseif fn == 12 then
-					a = ~(a | b)
+					cpu.stack[#cpu.stack] = ~(cpu.stack[#cpu.stack] | a)
 				elseif fn == 13 then
-					a = (a << b) & 0xffffff
+					cpu.stack[#cpu.stack] = (cpu.stack[#cpu.stack] << a) & 0xffffff
 				elseif fn == 14 then
-					a = a >> b
+					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] >> a
 				elseif fn == 15 then
-					a = (toSigned(a) >> b) & 0xffffff
+					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) >> a) & 0xffffff
 				end
-				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
 			-- Push.
 			elseif instr == 2 then
-				cpu.push(p[cpu.pc + 1], cpu.stack, imm, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 0, 1, 0x40000)
+				cpu.stack[#cpu.stack + 1] = imm
 				cpu.pc = cpu.pc + 3
 			-- Stack operations.
 			elseif instr == 3 then
 				if fn == 0 then
-					cpu.pop(p[cpu.pc + 1], cpu.stack)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 1, 0, 0x40000)
+					cpu.stack[#cpu.stack] = nil
 				elseif fn == 1 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 1, 2, 0x40000)
+					cpu.stack[#cpu.stack + 1] = cpu.stack[#cpu.stack]
 				elseif fn == 2 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 3, 0x40000)
+					cpu.stack[#cpu.stack + 1] = cpu.stack[#cpu.stack - 1]
 				elseif fn == 3 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 3, 0x40000)
+					table.insert(cpu.stack, #cpu.stack - 1, cpu.stack[#cpu.stack])
 				elseif fn == 4 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 1, 0x40000)
+					cpu.stack[#cpu.stack - 1] = cpu.stack[#cpu.stack]
+					cpu.stack[#cpu.stack] = nil
 				elseif fn == 5 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 2, 0x40000)
+					a = cpu.stack[#cpu.stack]
+					cpu.stack[#cpu.stack] = nil
+					table.insert(cpu.stack, #cpu.stack, a)
 				elseif fn == 6 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					c = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, c, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 3, 3, 0x40000)
+					a = cpu.stack[#cpu.stack - 2]
+					table.remove(cpu.stack, #cpu.stack - 2)
+					cpu.stack[#cpu.stack + 1] = a
 				elseif fn == 7 then
-					a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					c = cpu.pop(p[cpu.pc + 1], cpu.stack)
-					cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, c, 0x40000)
-					cpu.push(p[cpu.pc + 1], cpu.stack, b, 0x40000)
+					cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 3, 3, 0x40000)
+					a = cpu.stack[#cpu.stack]
+					cpu.stack[#cpu.stack] = nil
+					table.insert(cpu.stack, #cpu.stack - 1, a)
 				end
 			-- Store.
 			elseif instr == 4 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-				b = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 0, 0x40000)
+				a = cpu.stack[#cpu.stack]
+				cpu.stack[#cpu.stack] = nil
+				b = cpu.stack[#cpu.stack]
+				cpu.stack[#cpu.stack] = nil
 				m.write(b, a)
 			-- Load.
 			elseif instr == 5 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-				a = m.read(a)
-				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 1, 1, 0x40000)
+				cpu.stack[#cpu.stack] = m.read(cpu.stack[#cpu.stack])
 			-- Push to iteration stack.
 			elseif instr == 6 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-				cpu.push(p[cpu.pc + 1], cpu.iterStack, a, 0x100)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 1, 0, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.iterStack, 0, 1, 0x100)
+				cpu.iterStack[#cpu.iterStack + 1] = cpu.stack[#cpu.stack]
+				cpu.stack[#cpu.stack] = nil
 			-- Copy from iteration stack.
 			elseif instr == 7 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
-				cpu.push(p[cpu.pc + 1], cpu.iterStack, a, 0x100)
-				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 0, 1, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.iterStack, 1, 1, 0x100)
+				cpu.stack[#cpu.stack + 1] = cpu.iterStack[#cpu.iterStack]
 			-- Drop from iteration stack.
 			elseif instr == 8 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
-				cpu.push(p[cpu.pc + 1], cpu.stack, a, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 0, 1, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.iterStack, 1, 0, 0x100)
+				cpu.stack[#cpu.stack + 1] = cpu.iterStack[#cpu.iterStack]
+				cpu.iterStack[#cpu.iterStack] = nil
 			-- Comparison.
 			elseif instr == 9 then
-				b = cpu.pop(p[cpu.pc + 1], cpu.stack)
-				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 2, 1, 0x40000)
+				a = cpu.stack[#cpu.stack]
+				cpu.stack[#cpu.stack] = nil
 				if fn == 0 then
-					c = a == b
+					b = cpu.stack[#cpu.stack] == a
 				elseif fn == 1 then
-					c = a ~= b
+					b = cpu.stack[#cpu.stack] ~= a
 				elseif fn == 2 then
-					c = toSigned(a) > toSigned(b)
+					b = toSigned(cpu.stack[#cpu.stack]) > toSigned(a)
 				elseif fn == 3 then
-					c = toSigned(a) < toSigned(b)
+					b = toSigned(cpu.stack[#cpu.stack]) < toSigned(a)
 				elseif fn == 4 then
-					c = toSigned(a) >= toSigned(b)
+					b = toSigned(cpu.stack[#cpu.stack]) >= toSigned(a)
 				elseif fn == 5 then
-					c = toSigned(a) <= toSigned(b)
+					b = toSigned(cpu.stack[#cpu.stack]) <= toSigned(a)
 				elseif fn == 6 then
-					c = a > b
+					b = cpu.stack[#cpu.stack] > a
 				elseif fn == 7 then
-					c = a < b
+					b = cpu.stack[#cpu.stack] < a
 				elseif fn == 8 then
-					c = a >= b
+					b = cpu.stack[#cpu.stack] >= a
 				elseif fn == 9 then
-					c = a <= b
+					b = cpu.stack[#cpu.stack] <= a
 				end
-				if c then
-					cpu.push(p[cpu.pc + 1], cpu.stack, 0xffffff, 0x40000)
+				if b then
+					cpu.stack[#cpu.stack] = 0xffffff
 				else
-					cpu.push(p[cpu.pc + 1], cpu.stack, 0, 0x40000)
+					cpu.stack[#cpu.stack] = 0
 				end
 			-- Jump.
 			elseif instr == 10 then
 				cpu.pc = addr - 1
 			-- Conditional jump.
 			elseif instr == 11 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.stack)
-				if a ~= 0 then
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.stack, 1, 0, 0x40000)
+				if cpu.stack[#cpu.stack] ~= 0 then
 					cpu.pc = addr - 1
 				else
 					cpu.pc = cpu.pc + 3
 				end
+				cpu.stack[#cpu.stack] = nil
 			-- Iterator jump.
 			elseif instr == 12 then
-				a = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
-				b = cpu.pop(p[cpu.pc + 1], cpu.iterStack)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.iterStack, 2, 2, 0x100)
+				a = cpu.iterStack[#cpu.iterStack]
+				b = cpu.iterStack[#cpu.iterStack - 1]
 				if a == b then
 					cpu.pc = addr - 1
+					cpu.iterStack[#cpu.iterStack] = nil
+					cpu.iterStack[#cpu.iterStack] = nil
 				else
-					cpu.push(p[cpu.pc + 1], cpu.iterStack, b, 0x100)
-					cpu.push(p[cpu.pc + 1], cpu.iterStack, a, 0x100)
 					cpu.pc = cpu.pc + 3
 				end
 			-- Call.
 			elseif instr == 13 then
-				cpu.pc = cpu.pc + 3
-				cpu.push(p[cpu.pc + 1], cpu.retStack, cpu.pc, 0x40000)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.retStack, 0, 1, 0x40000)
+				cpu.retStack[#cpu.retStack + 1] = (cpu.pc + 4) & 0xfffffff
 				cpu.pc = addr - 1
 			-- Return.
 			elseif instr == 14 then
-				cpu.pc = cpu.pop(p[cpu.pc + 1], cpu.retStack)
+				cpu.validateStackOp(p[cpu.pc + 1], cpu.retStack, 1, 0, 0x40000)
+				cpu.pc = cpu.retStack[#cpu.retStack] - 1
+				cpu.retStack[#cpu.retStack] = nil
 			-- End this mess.
 			elseif instr == 15 then
 				cpu.running = false
