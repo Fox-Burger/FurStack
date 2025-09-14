@@ -1,6 +1,8 @@
-#!/usr/bin/env lua
+#!/usr/bin/env luajit
 -- Nocurses my beloved.
 local nocurses = require("nocurses")
+local bit = require("bit")
+local utf8 = require("utf8")
 
 function runtimeError(m)
 	io.write("\27[?1049l")
@@ -36,15 +38,29 @@ end
 -- Memory object.
 mem = {
 	ram = {},
+	fname = {},
+	fcont = {},
+	fstat = 0,
+	fmode = 0,
+	fil = 0,
 	term = "",
 	-- Init function.
 	init = function()
 		for i = 1, 0x800000 do
 			mem.ram[#mem.ram + 1] = 0
 		end
+		for i = 1, 0x100000 do
+			mem.fcont[#mem.fcont + 1] = 0
+		end
+		for i = 1, 0x100 do
+			mem.fname[#mem.fname + 1] = 0
+		end
 	end,
 	-- Read and write functions.
 	write = function(addr, val)
+		local temp = ""
+		local temp1 = ""
+		local temp2 = 0
 		if addr < 0x800000 then
 			mem.ram[addr + 1] = val
 		elseif addr == 0x800000 then
@@ -59,6 +75,61 @@ mem = {
 		elseif addr == 0x800001 then
 			mem.term = ""
 			nocurses.clrscr()
+		elseif addr == 0xeffefe then
+			if val == 0 then
+				if mem.fmode == 1 then
+					io.close(mem.fil)
+				elseif mem.fmode == 2 then
+					for i = 1, #mem.fcont do
+						if mem.fcont[i] == 0 then
+							break
+						end
+						temp = temp .. utf8.char(mem.fcont[i])
+					end
+					mem.fil.write(mem.fil, temp)
+					io.close(mem.fil)
+				end
+			elseif val == 1 then
+				for i = 1, #mem.fname do
+					if mem.fname[i] == 0 then
+						break
+					end
+					temp = temp .. utf8.char(mem.fname[i])
+				end
+				mem.fil = io.open(temp, "r")
+				if mem.fil == nil then
+					mem.fstat = 1
+					io.close(mem.fil)
+				else
+					temp1 = mem.fil.read(mem.fil, "*all")
+					if utf8.len(temp1) > #mem.fcont then
+						mem.fstat = 2
+						io.close(mem.fil)
+					else
+						temp2 = 1
+						for _, c in utf8.codes(temp1) do
+							mem.fcont[temp2] = c
+							temp2 = temp2 + 1
+						end
+					end
+				end
+			elseif val == 2 then
+				for i = 1, #mem.fname do
+					if mem.fname[i] == 0 then
+						break
+					end
+					temp = temp .. utf8.char(mem.fname[i])
+				end
+				mem.fil = io.open(temp, "w")
+				for i = 1, #mem.fcont do
+					mem.fcont[i] = 0
+				end
+			end
+			mem.fmode = val
+		elseif addr >= 0xefff00 and addr <= 0xefffff then
+			mem.fname[addr - 0xeffeff] = val
+		elseif addr >= 0xf00000 then
+			mem.fcont[addr - 0xefffff] = val
 		end
 	end,
 	read = function(addr)
@@ -95,6 +166,12 @@ mem = {
 			d = os.time()
 		elseif addr == 0x800004 then
 			d = math.random(0, 0xffffff)
+		elseif addr == 0xeffeff then
+			d = mem.fstat
+		elseif addr >= 0xefff00 and addr <= 0xefffff then
+			d = mem.fname[addr - 0xeffeff]
+		elseif addr >= 0xf00000 then
+			d = mem.fcont[addr - 0xefffff]
 		end
 		return d
 	end
@@ -126,14 +203,14 @@ cpu = {
 		if p[cpu.pc + 1] == nil then
 			runtimeError("Program counter out of range.")
 		else
-			instr = p[cpu.pc + 1] >> 4
-			fn = p[cpu.pc + 1] & 0xf
+			instr = bit.rshift(p[cpu.pc + 1], 4)
+			fn = bit.band(p[cpu.pc + 1], 0xf)
 			if instr == 2 or instr >= 10 and instr <= 13 then
 				if p[cpu.pc + 2] == nil or p[cpu.pc + 3] == nil or p[cpu.pc + 4] == nil then
 					runtimeError("Missing parameter.\nPC: " .. cpu.pc .. "\nInstruction: " .. string.format("%x", p[cpu.pc + 1]))
 				else
-					addr = (fn << 24) + (p[cpu.pc + 2] << 16) + (p[cpu.pc + 3] << 8) + p[cpu.pc + 4]
-					imm = addr & 0xffffff
+					addr = bit.lshift(fn, 24) + bit.lshift(p[cpu.pc + 2], 16) + bit.lshift(p[cpu.pc + 3], 8) + p[cpu.pc + 4]
+					imm = bit.band(addr, 0xffffff)
 				end
 			end
 			-- Noop.
@@ -145,37 +222,37 @@ cpu = {
 				a = cpu.stack[#cpu.stack]
 				cpu.stack[#cpu.stack] = nil
 				if fn == 0 then
-					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) + toSigned(a)) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(toSigned(cpu.stack[#cpu.stack]) + toSigned(a), 0xffffff)
 				elseif fn == 1 then
-					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) - toSigned(a)) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(toSigned(cpu.stack[#cpu.stack]) - toSigned(a), 0xffffff)
 				elseif fn == 2 then
-					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) * toSigned(a)) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(toSigned(cpu.stack[#cpu.stack]) * toSigned(a), 0xffffff)
 				elseif fn == 3 then
-					cpu.stack[#cpu.stack] = (cpu.stack[#cpu.stack] * a) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(cpu.stack[#cpu.stack] * a, 0xffffff)
 				elseif fn == 4 then
-					cpu.stack[#cpu.stack] = ((toSigned(cpu.stack[#cpu.stack]) * toSigned(a)) >> 12) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(math.floor(toSigned(cpu.stack[#cpu.stack]) * toSigned(a) / 0x1000), 0xffffff)
 				elseif fn == 5 then
-					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) // toSigned(a)) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(math.floor(toSigned(cpu.stack[#cpu.stack]) / toSigned(a)), 0xffffff)
 				elseif fn == 6 then
-					cpu.stack[#cpu.stack] = (cpu.stack[#cpu.stack] // a) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(math.floor(cpu.stack[#cpu.stack] / a), 0xffffff)
 				elseif fn == 7 then
-					cpu.stack[#cpu.stack] = ((toSigned(cpu.stack[#cpu.stack]) << 12) // toSigned(a)) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(math.floor((toSigned(cpu.stack[#cpu.stack]) * 0x1000) / toSigned(a)), 0xffffff)
 				elseif fn == 8 then
 					cpu.stack[#cpu.stack] = toSigned(cpu.stack[#cpu.stack]) % toSigned(a)
 				elseif fn == 9 then
-					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] & a
+					cpu.stack[#cpu.stack] = bit.band(cpu.stack[#cpu.stack], a)
 				elseif fn == 10 then
-					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] | a
+					cpu.stack[#cpu.stack] = bit.bor(cpu.stack[#cpu.stack], a)
 				elseif fn == 11 then
-					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] ~ a
+					cpu.stack[#cpu.stack] = bit.bxor(cpu.stack[#cpu.stack], a)
 				elseif fn == 12 then
-					cpu.stack[#cpu.stack] = ~(cpu.stack[#cpu.stack] | a)
+					cpu.stack[#cpu.stack] = bit.bnot(bit.bor(cpu.stack[#cpu.stack], a))
 				elseif fn == 13 then
-					cpu.stack[#cpu.stack] = (cpu.stack[#cpu.stack] << a) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(bit.lshift(cpu.stack[#cpu.stack], a), 0xffffff)
 				elseif fn == 14 then
-					cpu.stack[#cpu.stack] = cpu.stack[#cpu.stack] >> a
+					cpu.stack[#cpu.stack] = bit.rshift(cpu.stack[#cpu.stack], a)
 				elseif fn == 15 then
-					cpu.stack[#cpu.stack] = (toSigned(cpu.stack[#cpu.stack]) >> a) & 0xffffff
+					cpu.stack[#cpu.stack] = bit.band(bit.arshift(toSigned(cpu.stack[#cpu.stack]), a), 0xffffff)
 				end
 			-- Push.
 			elseif instr == 2 then
@@ -303,7 +380,7 @@ cpu = {
 			-- Call.
 			elseif instr == 13 then
 				cpu.validateStackOp(p[cpu.pc + 1], cpu.retStack, 0, 1, 0x40000)
-				cpu.retStack[#cpu.retStack + 1] = (cpu.pc + 4) & 0xfffffff
+				cpu.retStack[#cpu.retStack + 1] = bit.band((cpu.pc + 4), 0xfffffff)
 				cpu.pc = addr - 1
 			-- Return.
 			elseif instr == 14 then
@@ -315,7 +392,7 @@ cpu = {
 				cpu.running = false
 			end
 			::noop::
-			cpu.pc = (cpu.pc + 1) & 0xfffffff
+			cpu.pc = bit.band((cpu.pc + 1), 0xfffffff)
 		end
 	end
 }
@@ -348,7 +425,7 @@ code = prg.read(prg, "*all")
 io.close(prg)
 
 -- Executing it.
-rom = convert(code)
+local rom = convert(code)
 mem.init()
 while cpu.running do
 	cpu.cycle(rom, mem)

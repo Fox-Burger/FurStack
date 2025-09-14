@@ -14,7 +14,8 @@ Content of the file:
 8. Arrays
 9. Functions
 10. Including other FurStack programs
-11. List of all words and some other stuff
+11. Working with files
+12. List of all words and some other stuff
 
 ---
 
@@ -349,8 +350,9 @@ endfn
 This time we don't declare variable. We could write the previous programs to not use variables, but we already did so whatever. We specify the start index
 and amount of iterations. In this case, start index is 0 and it will loop for 10 times. Then we have the word loop, which starts the for loop. Inside the
 loop, we copy top stack value from iteration stack and add it to character "0". We don't need to increment it, word for does that for us. It will always
-increment the loop index by 1. For loops are perfect for cases where we know how many times we want to loop. Before we get to next section, lets finally
-write the hello world program. Here it is.
+increment the loop index by 1. For loops are perfect for cases where we know how many times we want to loop. There is also the break and continue words.
+They only work with for loop, so if you use them in while or repeat until loops, something will break. Word break exits the for loop. Word continues
+starts new iteration. Before we get to next section, lets finally write the hello world program. Here it is.
 ```
 fn main
 	"Hello world!\n\0"
@@ -493,11 +495,67 @@ endfn
 In lib.fu, we have function write. It prints characters until it encounters zero. In main.fu we include lib.fu. In main function we push string
 "Hello world!\n\0" and call write function from lib.fu. Note that in the file you include, you should not write the main function. Otherwise the compiler
 will complain. Another thing to note is that FurStack uses static linking, meaning it will include everything from included file inside, including functions
-you will not use. This is a waste of space, but this was easy to implement. With that in mind, this is all about FurStack. I hope you learned enough.
+you will not use. This is a waste of space, but this was easy to implement. This is the time for the last section.
 
 ---
 
-## 11. List of all words and some other stuff
+## 11. Working with files
+There are cases we want to save something, for example, players invertory, points, and progress. That's why we need to access files. In FurStack, you can
+do it with words fopen, fclose and fcont. Word fopen opens the file. It takes the name of the file and mode. There are three modes: 0 to close the file,
+1 to open file in read only mode and 2 to open it in write only mode. Word fclose closes the file. It takes no parameters. Word fcont is more like a pointer
+to a content of the file. It's basically an array that can access 1MB of addresses. Below is the program to demonstrate it.
+```
+include std.fu
+
+fn displayError
+	write
+	bye
+endfn
+
+fn main
+	"lol\0" 2 fopen
+	if
+		"Problems while opening file\n\0" displayError
+	then
+	"Hewwo :3\0" fcont
+	while over 0 ~= do
+		dup rot set
+		1 +
+	endwhile
+	drop drop
+	fclose
+	"lol\0" 1 fopen
+	if
+		"Problems while reading file\n\0" displayError
+	then
+	fcont
+	while dup fetch 0 ~= do
+		dup fetch put
+		1 +
+	endwhile
+	drop
+	fclose
+	bye
+endfn
+
+```
+std.fu
+```
+fn write
+	while dup 0 ~= do
+		put
+	endwhile
+	drop
+endfn
+```
+This demonstrates almost all things we discussed. In std.fu we have the write function. We include it to our main file. In it, we have function displayError.
+It will display the error message. Word fopens return a status. 0 means no problems, 1 means that either file doesn't exists or you have no premissions to
+work with it and 2 means that file doesn't fit in fcont. In main function, we open file lol in write only mode. We check if it worked and display error if
+something went wrong. Then we push string we want to store and push pointer to fcont. Then we write that message to fcont. After doing that we close the file
+and open it in read only mode. We do the same as before. We read the content of fcont and write it to the terminal. After doing it we close the file and exit.
+Note that you can have only one file openned at the same time. That's all there is about FurStack. I hope you learned something.
+
+## 12. List of all words and some other stuff
 Words:
 1. include
 2. fn
@@ -521,49 +579,54 @@ Words:
 20. until
 21. loop
 22. for
-23. bye
-24. put
-25. cls
-26. getin
-27. utime
-28. rand
-29. `+`
-30. `-`
-31. `*`
-32. `u*`
-34. fmul
-35. /
-36. u/
-37. fdiv
-38. %
-39. &
-40. `|`
-41. ~
-42. !
-43. <<
-44. `>>`
-45. `>>>`
-46. =
-47. ~=
-48. `>`
-49. `>=`
-50. <
-51. <=
-52. u>
-53. u>=
-54. u<
-55. u<=
-56. dup
-57. over
-58. swap
-59. rot
-60. drop
-61. tuck
-62. nip
-63. crot
-64. `>i`
-65. i@
-66. i>
+23. break
+24. continue
+25. bye
+26. put
+27. cls
+28. getin
+29. utime
+30. rand
+31. fopen
+32. fclose
+33. fcont
+34. `+`
+35. `-`
+36. `*`
+37. `u*`
+38. fmul
+39. /
+40. u/
+41. fdiv
+42. %
+43. &
+44. `|`
+45. ~
+46. !
+47. <<
+48. `>>`
+49. `>>>`
+50. =
+51. ~=
+52. `>`
+53. `>=`
+54. <
+55. <=
+56. u>
+57. u>=
+58. u<
+59. u<=
+60. dup
+61. over
+62. swap
+63. rot
+64. drop
+65. tuck
+66. nip
+67. crot
+68. `>i`
+69. i@
+70. i>
 
 Escape codes:
 1. \t - tabulator

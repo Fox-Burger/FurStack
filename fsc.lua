@@ -1,5 +1,6 @@
-#!/usr/bin/env lua
+#!/usr/bin/env luajit
 require("common")
+local utf8 = require("utf8")
 
 -- Splits the source code.
 function tokenize(s, f)
@@ -108,7 +109,7 @@ function errorCheck(t, l, f)
 	local forStack = {}
 	-- All supported words.
 	local words = {"include", "fn", "endfn", "rem", "endrem", "let", "const", "array", "set", "fetch", "true", "false", "if", "else", "then", "while", "do",
-	"endwhile", "repeat", "until", "loop", "for", "bye", "put", "cls", "getin", "utime", "rand",
+	"endwhile", "repeat", "until", "loop", "for", "break", "continue", "bye", "put", "cls", "getin", "utime", "rand", "fopen", "fclose", "fcont",
 	"+", "-", "*", "u*", "fmul", "/", "u/", "fdiv", "%", "&", "|", "~", "!", "<<", ">>", ">>>", "=", "~=", ">", "<", ">=", "<=", "u>", "u<", "u>=", "u<=",
 	"dup", "over", "tuck", "swap", "rot", "crot", "drop", "nip", ">i", "i@", "i>"}
 	local iter = 1
@@ -185,8 +186,8 @@ function errorCheck(t, l, f)
 					table.insert(vars, t[iter])
 					table.insert(tab, t[iter])
 					iter = iter + 1
-					if math.type(tonumber(t[iter])) == "integer" and isValNum(tonumber(t[iter]), -0x800000, 0xffffff) or
-					math.type(tonumber(t[iter])) == "float" and isValNum(tonumber(t[iter]), -0x800.000, 0xfff.fff) or
+					if not isFloat(t[iter]) and isValNum(tonumber(t[iter]), -0x800000, 0xffffff) or
+					isFloat(t[iter]) and isValNum(tonumber(t[iter]), -0x800.000, 0xfff.fff) or
 					string.match(t[iter], "\".\"") or t[iter] == "true" or t[iter] == "false" then
 						table.insert(tab, t[iter])
 					else
@@ -268,8 +269,8 @@ function errorCheck(t, l, f)
 			end
 		-- Is it a number, string, variable name or function name?
 		else
-			if not (tonumber(t[iter]) and math.type(tonumber(t[iter])) == "integer" and isValNum(tonumber(t[iter]), -0x800000, 0xffffff)) and
-			not (tonumber(t[iter]) and math.type(tonumber(t[iter])) == "float" and isValNum(tonumber(t[iter]), -0x800.000, 0x7ff.fff)) and
+			if not (tonumber(t[iter]) and not isFloat(t[iter]) and isValNum(tonumber(t[iter]), -0x800000, 0xffffff)) and
+			not (tonumber(t[iter]) and isFloat(t[iter]) and isValNum(tonumber(t[iter]), -0x800.000, 0x7ff.fff)) and
 			not isIn(fns, t[iter]) and not isIn(vars, t[iter]) and not string.match(t[iter], "\".*\"") then
 				disError("Invalid word in line " .. getLn(iter, l) .. " inside " .. f)
 			else
@@ -320,8 +321,36 @@ function compile(c, t, s, m)
 	-- Yes, I plan to add option to compile to something else than assembly for fsvm.
 	-- A stuff that will be included in every compiled FurStack program.
 	if t == "fsvm" then
+		sf.write(sf, "def fcont 0xf00000" .. nl)
+		sf.write(sf, nl)
 		sf.write(sf, "cal main" .. nl)
 		sf.write(sf, "exit" .. nl)
+		sf.write(sf, nl)
+		sf.write(sf, "deflab fopen" .. nl)
+		sf.write(sf, "\titp" .. nl)
+		sf.write(sf, "\tpush 0xefff00" .. nl)
+		sf.write(sf, nl)
+		sf.write(sf, "deflab fopen1" .. nl)
+		sf.write(sf, "\tover" .. nl)
+		sf.write(sf, "\tpush 0" .. nl)
+		sf.write(sf, "\teq" .. nl)
+		sf.write(sf, "\tjc fopen2" .. nl)
+		sf.write(sf, "\tdup" .. nl)
+		sf.write(sf, "\trot" .. nl)
+		sf.write(sf, "\tsw" .. nl)
+		sf.write(sf, "\tpush 1" .. nl)
+		sf.write(sf, "\tadd" .. nl)
+		sf.write(sf, "\tj fopen1" .. nl)
+		sf.write(sf, nl)
+		sf.write(sf, "deflab fopen2" .. nl)
+		sf.write(sf, "\tdrop" .. nl)
+		sf.write(sf, "\tdrop" .. nl)
+		sf.write(sf, "\tpush 0xeffefe" .. nl)
+		sf.write(sf, "\titd" .. nl)
+		sf.write(sf, "\tsw" .. nl)
+		sf.write(sf, "\tpush 0xeffeff" .. nl)
+		sf.write(sf, "\tlw" .. nl)
+		sf.write(sf, "\tret" .. nl)
 		sf.write(sf, nl)
 	end
 	-- All the words to be compiled.
@@ -447,6 +476,18 @@ function compile(c, t, s, m)
 				sf.write(sf, nl)
 				sf.write(sf, "deflab for" .. forStack[#forStack] .. nl)
 				table.remove(forStack)
+			elseif c[iter] == "break" then
+				sf.write(sf, "\titd" .. nl)
+				sf.write(sf, "\tdrop" .. nl)
+				sf.write(sf, "\titd" .. nl)
+				sf.write(sf, "\tdrop" .. nl)
+				sf.write(sf, "\tj for" .. forStack[#forStack] .. nl)
+			elseif c[iter] == "continue" then
+				sf.write(sf, "\titd" .. nl)
+				sf.write(sf, "\tpush 1" .. nl)
+				sf.write(sf, "\tadd" .. nl)
+				sf.write(sf, "\titp" .. nl)
+				sf.write(sf, "\tj loop" .. forStack[#forStack] .. nl)
 			elseif c[iter] == "bye" then
 				sf.write(sf, "\texit" .. nl)
 			elseif c[iter] == "put" then
@@ -466,6 +507,14 @@ function compile(c, t, s, m)
 			elseif c[iter] == "rand" then
 				sf.write(sf, "\tpush 0x800004" .. nl)
 				sf.write(sf, "\tlw" .. nl)
+			elseif c[iter] == "fopen" then
+				sf.write(sf, "\tcal fopen" .. nl)
+			elseif c[iter] == "fclose" then
+				sf.write(sf, "\tpush 0xeffefe" .. nl)
+				sf.write(sf, "\tpush 0" .. nl)
+				sf.write(sf, "\tsw" .. nl)
+			elseif c[iter] == "fcont" then
+				sf.write(sf, "\tpush fcont" .. nl)
 			elseif c[iter] == "+" then
 				sf.write(sf, "\tadd" .. nl)
 			elseif c[iter] == "-" then

@@ -210,4 +210,12 @@ Memory map:
 
 0x800004 - Random number.
 
-0x800005-0xffffff - unused.
+0x800005-0xeffefd - unused.
+
+0xeffefe - File action.
+
+0xeffeff - File status.
+
+0xefff00-0xefffff - File name.
+
+0xf00000-0xffffff - File content.

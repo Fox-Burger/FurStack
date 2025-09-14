@@ -1,6 +1,7 @@
-#!/usr/bin/env lua
+#!/usr/bin/env luajit
 -- FurStack Assembler.
 require("common")
+local bit = require("bit")
 
 -- Split string into table of lines. Lines are split into table of words.
 function line_split(s, c)
@@ -38,9 +39,9 @@ function process(p)
 		elseif p[i][1] == "def" then
 			if defs[p[i][2]] then
 				disError("Definition defined again in line " .. i)
-			elseif math.type(tonumber(p[i][3])) == "float" and isValNum(p[i][3], -0x800.000, 0x7ff.fff) then
+			elseif isFloat(p[i][3]) and isValNum(p[i][3], -0x800.000, 0x7ff.fff) then
 				defs[p[i][2]] = math.floor(tonumber(p[i][3]) * 0x1000)
-			elseif math.type(tonumber(p[i][3])) == "integer" and isValNum(p[i][3], -0x800000, 0xffffff) then
+			elseif not isFloat(p[i][3]) and isValNum(p[i][3], -0x800000, 0xffffff) then
 				defs[p[i][2]] = tonumber(p[i][3])
 			else
 				disError("Invalid value for definition in line " .. i)
@@ -75,40 +76,40 @@ function assemble(c, lab, def, lin)
 	local b = 0
 	local operand = 0
 	for i = 1, #lin do
-		b = opcode[c[lin[i]][1]] << 4
+		b = bit.lshift(opcode[c[lin[i]][1]], 4)
 		if b == 0x10 or b == 0x30 or b == 0x90 then
 			b = b + fn[c[lin[i]][1]]
 		-- Some instructions take 4 bytes.
 		elseif b == 0x20 then
 			if def[c[lin[i]][2]] then
 				operand = def[c[lin[i]][2]]
-			elseif math.type(tonumber(c[lin[i]][2])) == "float" and isValNum(c[lin[i]][2], -0x800.000, 0x7ff.fff) then
+			elseif isFloat(c[lin[i]][2]) and isValNum(c[lin[i]][2], -0x800.000, 0x7ff.fff) then
 				operand = math.floor(tonumber(c[lin[i]][2] * 0x1000))
-			elseif math.type(tonumber(c[lin[i]][2])) == "integer" and isValNum(c[lin[i]][2], -0x800000, 0xffffff) then
+			elseif not isFloat(c[lin[i]][2]) and isValNum(c[lin[i]][2], -0x800000, 0xffffff) then
 				operand = tonumber(c[lin[i]][2])
 			else
 				disError("Invalid value in line " .. lin[i])
 			end
 			table.insert(tab, b)
-			b = (operand & 0xff0000) >> 16
+			b = bit.rshift(bit.band(operand, 0xff0000), 16)
 			table.insert(tab, b)
-			b = (operand & 0xff00) >> 8
+			b = bit.rshift(bit.band(operand, 0xff00), 8)
 			table.insert(tab, b)
-			b = operand & 0xff
+			b = bit.band(operand, 0xff)
 		elseif b >= 0xa0 and b <= 0xd0 then
 			if lab[c[lin[i]][2]] then
 				operand = lab[c[lin[i]][2]]
-			elseif math.type(tonumber(c[lin[i]][2])) == "integer" and isValNum(c[lin[i]][2], 0x0, 0xffffff) then
+			elseif not isFloat(c[lin[i]][2]) and isValNum(c[lin[i]][2], 0x0, 0xffffff) then
 				operand = tonumber(c[lin[i]][2])
 			else
 				disError("Invalid address in line " .. lin[i])
 			end
 			table.insert(tab, b)
-			b = (operand & 0xff0000) >> 16
+			b = bit.rshift(bit.band(operand, 0xff0000), 16)
 			table.insert(tab, b)
-			b = (operand & 0xff00) >> 8
+			b = bit.rshift(bit.band(operand, 0xff00), 8)
 			table.insert(tab, b)
-			b = operand & 0xff
+			b = bit.band(operand, 0xff)
 		end
 		table.insert(tab, b)
 	end

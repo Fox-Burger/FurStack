@@ -3,9 +3,10 @@ Furstack is another concatinative, stack-based programming language inspired by 
 
 # Dependecies
 To use FurStack you need:
-1. at least lua version 5.3
+1. lua 5.1 or luajit (luajit is recommended for performance reasons)
 2. nocurses library (fsvm only)
-3. Any unix-like os that can run things above
+3. luautf8 library(luajit has no utf8 liblary)
+4. Any unix-like os that can run things above
 
 # About
 [To learn the basic syntax of it, check this markdown file.](FS_manual.md)
